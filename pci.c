@@ -29,11 +29,15 @@ void mt76_pci_disable_aspm(struct pci_dev *pdev)
 		 (aspm_conf & PCI_EXP_LNKCTL_ASPM_L1) ? "L1" : "");
 
 	if (IS_ENABLED(CONFIG_PCIEASPM)) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
+		pci_disable_link_state(pdev, aspm_conf);
+#else
 		int err;
 
 		err = pci_disable_link_state(pdev, aspm_conf);
 		if (!err)
 			return;
+#endif
 	}
 
 	/* both device and parent should have the same ASPM setting.
