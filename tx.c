@@ -311,7 +311,7 @@ mt76_tx(struct mt76_phy *phy, struct ieee80211_sta *sta,
 	dev->queue_ops->kick(dev, q);
 
 	if (q->queued > q->ndesc - 8 && !q->stopped) {
-		ieee80211_stop_queue(phy->hw, skb_get_queue_mapping(skb));
+		ieee80211_stop_queue(phy->hw, qid);
 		q->stopped = true;
 	}
 
