@@ -163,7 +163,9 @@ static int mt7603_poll_tx(struct napi_struct *napi, int budget)
 	for (i = MT_TXQ_MCU; i >= 0; i--)
 		mt76_queue_tx_cleanup(dev, i, false);
 
+	rcu_read_lock();
 	mt7603_mac_sta_poll(dev);
+	rcu_read_unlock();
 
 	tasklet_schedule(&dev->mt76.tx_tasklet);
 
