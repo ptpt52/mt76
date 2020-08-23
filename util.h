@@ -11,6 +11,7 @@
 #include <linux/bitops.h>
 #include <linux/bitfield.h>
 #include <net/mac80211.h>
+#include <linux/kthread.h>
 
 struct mt76_worker
 {
