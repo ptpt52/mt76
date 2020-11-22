@@ -86,21 +86,27 @@ out_put_node:
 }
 EXPORT_SYMBOL_GPL(mt76_get_of_eeprom);
 
-void
+bool
 mt76_eeprom_override(struct mt76_phy *phy)
 {
+	bool ret = false;
 	struct mt76_dev *dev = phy->dev;
 
 	struct device_node *np = dev->dev->of_node;
 
-	of_get_mac_address(np, phy->macaddr);
+	if (np && !of_get_mac_address(np, phy->macaddr)) {
+		ret = true;
+	}
 
 	if (!is_valid_ether_addr(phy->macaddr)) {
 		eth_random_addr(phy->macaddr);
 		dev_info(dev->dev,
 			 "Invalid MAC address, using random address %pM\n",
 			 phy->macaddr);
+		ret = false;
 	}
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(mt76_eeprom_override);
 
