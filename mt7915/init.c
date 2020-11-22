@@ -531,7 +531,7 @@ mt7915_register_ext_phy(struct mt7915_dev *dev, struct mt7915_phy *phy)
 
 	mt7915_eeprom_parse_hw_cap(dev, phy);
 
-	memcpy(mphy->macaddr, dev->mt76.eeprom.data + MT_EE_MAC_ADDR2,
+	memcpy(mphy->macaddr, dev->mt76.eeprom.data + MT_EE_MAC_ADDR,
 	       ETH_ALEN);
 	/* Make the secondary PHY MAC address local without overlapping with
 	 * the usual MAC address allocation scheme on multiple virtual interfaces
@@ -543,6 +543,8 @@ mt7915_register_ext_phy(struct mt7915_dev *dev, struct mt7915_phy *phy)
 		mphy->macaddr[0] ^= BIT(7);
 	}
 	mt76_eeprom_override(mphy);
+	mphy->macaddr[3] |= 2;
+	mphy->macaddr[3] ^= BIT(7);
 
 	/* init wiphy according to mphy and phy */
 	mt7915_init_wiphy(mphy->hw);
