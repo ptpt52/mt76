@@ -551,7 +551,7 @@ int mt7603_register_device(struct mt7603_dev *dev)
 
 	wiphy->reg_notifier = mt7603_regd_notifier;
 
-	ret = mt76_register_device(&dev->mt76, true, mt76_rates,
+	ret = mt76_register_device(&dev->mt76, false, mt76_rates,
 				   ARRAY_SIZE(mt76_rates));
 	if (ret)
 		return ret;
