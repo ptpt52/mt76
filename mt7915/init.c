@@ -260,8 +260,8 @@ static int mt7915_register_ext_phy(struct mt7915_dev *dev)
 	memcpy(mphy->macaddr, dev->mt76.eeprom.data + MT_EE_MAC_ADDR2,
 	       ETH_ALEN);
 	mt76_eeprom_override(mphy);
-	mphy->macaddr[0] |= 2;
-	mphy->macaddr[0] ^= BIT(7);
+	mphy->macaddr[3] |= 2;
+	mphy->macaddr[3] ^= BIT(7);
 
 	/* The second interface does not get any packets unless it has a vif */
 	ieee80211_hw_set(mphy->hw, WANT_MONITOR_VIF);
