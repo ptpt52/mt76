@@ -224,6 +224,7 @@ static int mt7915_pci_probe(struct pci_dev *pdev,
 	struct mt7915_dev *dev;
 	struct mt76_dev *mdev;
 	int ret;
+	printk("mt7915_pci_probe begin\n");
 
 	ret = pcim_enable_device(pdev);
 	if (ret)
@@ -252,7 +253,7 @@ static int mt7915_pci_probe(struct pci_dev *pdev,
 	mt76_mmio_init(&dev->mt76, pcim_iomap_table(pdev)[0]);
 	mdev->rev = (mt7915_l1_rr(dev, MT_HW_CHIPID) << 16) |
 		    (mt7915_l1_rr(dev, MT_HW_REV) & 0xff);
-	dev_dbg(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
+	dev_info(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
 
 	mt76_wr(dev, MT_INT_MASK_CSR, 0);
 
@@ -267,6 +268,7 @@ static int mt7915_pci_probe(struct pci_dev *pdev,
 	mt7915_pci_init_hif2(dev);
 
 	ret = mt7915_register_device(dev);
+	printk("mt7915_register_device ret = %d\n", ret);
 	if (ret)
 		goto error;
 

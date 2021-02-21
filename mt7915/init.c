@@ -309,6 +309,7 @@ static int mt7915_init_hardware(struct mt7915_dev *dev)
 	dev->dbdc_support = !!(mt7915_l1_rr(dev, MT_HW_BOUND) & BIT(5));
 
 	ret = mt7915_dma_init(dev);
+	printk("mt7915_dma_init ret = %d\n", ret);
 	if (ret)
 		return ret;
 
@@ -321,10 +322,12 @@ static int mt7915_init_hardware(struct mt7915_dev *dev)
 	mt76_wr(dev, MT_SWDEF_MODE, MT_SWDEF_NORMAL_MODE);
 
 	ret = mt7915_mcu_init(dev);
+	printk("mt7915_mcu_init ret = %d\n", ret);
 	if (ret)
 		return ret;
 
 	ret = mt7915_eeprom_init(dev);
+	printk("mt7915_eeprom_init ret = %d\n", ret);
 	if (ret < 0)
 		return ret;
 
@@ -645,6 +648,7 @@ int mt7915_register_device(struct mt7915_dev *dev)
 	INIT_WORK(&dev->reset_work, mt7915_mac_reset_work);
 
 	ret = mt7915_init_hardware(dev);
+	printk("mt7915_init_hardware ret = %d\n", ret);
 	if (ret)
 		return ret;
 
@@ -676,6 +680,7 @@ int mt7915_register_device(struct mt7915_dev *dev)
 
 	ret = mt76_register_device(&dev->mt76, true, mt7915_rates,
 				   ARRAY_SIZE(mt7915_rates));
+	printk("mt76_register_device ret = %d\n", ret);
 	if (ret)
 		return ret;
 
