@@ -351,13 +351,13 @@ mt7615_queues_acq(struct seq_file *s, void *data)
 {
 	struct mt7615_dev *dev = dev_get_drvdata(s->private);
 	int i;
+	u32 ctrl, val, qlen;
 
 	mt7615_mutex_acquire(dev);
 
-	for (i = 0; i < 16; i++) {
+	for (qlen = 0, i = 0; i < 16; i++) {
 		int j, wmm_idx = i % MT7615_MAX_WMM_SETS;
 		int acs = i / MT7615_MAX_WMM_SETS;
-		u32 ctrl, val, qlen = 0;
 
 		val = mt76_rr(dev, MT_PLE_AC_QEMPTY(acs, wmm_idx));
 		ctrl = BIT(31) | BIT(15) | (acs << 8);
@@ -372,6 +372,15 @@ mt7615_queues_acq(struct seq_file *s, void *data)
 					       GENMASK(11, 0));
 		}
 		seq_printf(s, "AC%d%d: queued=%d\n", wmm_idx, acs, qlen);
+	}
+
+	val = !(mt76_rr(dev, MT_PLE_Q_EMPTY) & BIT(18));
+	if (val) {
+		ctrl = BIT(31) | BIT(15) | (0x12 << 8);
+		mt76_wr(dev, MT_PLE_FL_Q0_CTRL, ctrl);
+
+		qlen = mt76_get_field(dev, MT_PLE_FL_Q3_CTRL, GENMASK(11, 0));
+		seq_printf(s, "BCNQ: queued=%d\n", qlen);
 	}
 
 	mt7615_mutex_release(dev);
