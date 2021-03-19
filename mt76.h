@@ -587,6 +587,12 @@ struct mt76_phy {
 
 	struct mt76_queue *q_tx[__MT_TXQ_MAX];
 
+	struct {
+		struct sk_buff *head;
+		struct sk_buff **tail;
+		u16 seqno;
+	} rx_amsdu[__MT_RXQ_MAX];
+
 	struct cfg80211_chan_def chandef;
 	struct ieee80211_channel *main_chan;
 
@@ -609,12 +615,6 @@ struct mt76_phy {
 
 	struct delayed_work mac_work;
 	u8 mac_work_count;
-
-	struct {
-		struct sk_buff *head;
-		struct sk_buff **tail;
-		u16 seqno;
-	} rx_amsdu[__MT_RXQ_MAX];
 };
 
 struct mt76_dev {
