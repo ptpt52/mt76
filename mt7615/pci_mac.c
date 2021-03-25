@@ -113,6 +113,7 @@ int mt7615_tx_prepare_skb(struct mt76_dev *mdev, void *txwi_ptr,
 
 void mt7615_dma_reset(struct mt7615_dev *dev)
 {
+	struct mt76_phy *mphy_ext = dev->mt76.phys[MT_BAND1];
 	int i;
 
 	mt76_clear(dev, MT_WPDMA_GLO_CFG,
@@ -121,8 +122,11 @@ void mt7615_dma_reset(struct mt7615_dev *dev)
 
 	usleep_range(1000, 2000);
 
-	for (i = 0; i < __MT_TXQ_MAX; i++)
+	for (i = 0; i < __MT_TXQ_MAX; i++) {
 		mt76_queue_tx_cleanup(dev, dev->mphy.q_tx[i], true);
+		if (mphy_ext)
+			mt76_queue_tx_cleanup(dev, mphy_ext->q_tx[i], true);
+	}
 
 	for (i = 0; i < __MT_MCUQ_MAX; i++)
 		mt76_queue_tx_cleanup(dev, dev->mt76.q_mcu[i], true);
