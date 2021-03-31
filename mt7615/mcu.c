@@ -411,6 +411,7 @@ mt7615_mcu_rx_log_message(struct mt7615_dev *dev, struct sk_buff *skb)
 	struct mt7615_mcu_rxd *rxd = (struct mt7615_mcu_rxd *)skb->data;
 	const char *data = (char *)&rxd[1];
 	const char *type;
+	unsigned char *buf = NULL;
 
 	switch (rxd->s2d_index) {
 	case 0:
@@ -424,8 +425,36 @@ mt7615_mcu_rx_log_message(struct mt7615_dev *dev, struct sk_buff *skb)
 		break;
 	}
 
-	wiphy_info(mt76_hw(dev)->wiphy, "%s: %*s", type,
-		   skb->len - sizeof(*rxd), data);
+	buf = kmalloc(skb->len - sizeof(*rxd) + 1, GFP_ATOMIC);
+	if (buf) {
+		memcpy(buf, data, skb->len - sizeof(*rxd));
+		buf[skb->len - sizeof(*rxd)] = 0;
+		data = buf;
+	}
+
+	wiphy_info(mt76_hw(dev)->wiphy, "%s: [%s]", type, data);
+
+	if (buf) kfree(buf);
+}
+
+static void
+mt7615_mcu_beacon_loss_event(struct mt7615_dev *dev, struct sk_buff *skb)
+{
+	struct mt76_connac_beacon_loss_event *event;
+	struct mt76_phy *mphy;
+	u8 band_idx = 0; /* DBDC support */
+
+	skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
+	event = (struct mt76_connac_beacon_loss_event *)skb->data;
+	if (band_idx && dev->mt76.phy2)
+		mphy = dev->mt76.phy2;
+	else
+		mphy = &dev->mt76.phy;
+
+	ieee80211_iterate_active_interfaces_atomic(mphy->hw,
+					IEEE80211_IFACE_ITER_RESUME_ALL,
+					mt76_connac_mcu_beacon_loss_iter,
+					event);
 }
 
 static void
@@ -443,7 +472,14 @@ mt7615_mcu_rx_ext_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	case MCU_EXT_EVENT_FW_LOG_2_HOST:
 		mt7615_mcu_rx_log_message(dev, skb);
 		break;
+	case MCU_EXT_EVENT_BEACON_LOSS:
+		mt7615_mcu_beacon_loss_event(dev, skb);
+		break;
+	case MCU_EXT_EVENT_PS_SYNC:
+		//TODO
+		break;
 	default:
+		printk("get ext unhandle eid=%d ext_eid=%d seq=%d\n", rxd->eid, rxd->ext_eid, rxd->seq);
 		break;
 	}
 }
@@ -455,9 +491,10 @@ mt7615_mcu_scan_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	struct mt7615_phy *phy;
 	struct mt76_phy *mphy;
 
-	if (*seq_num & BIT(7) && dev->mt76.phy2)
+	if (*seq_num & BIT(7)) {
+		BUG_ON(!dev->mt76.phy2);
 		mphy = dev->mt76.phy2;
-	else
+	} else
 		mphy = &dev->mt76.phy;
 
 	phy = (struct mt7615_phy *)mphy->priv;
@@ -481,9 +518,10 @@ mt7615_mcu_roc_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
 	event = (struct mt7615_roc_tlv *)skb->data;
 
-	if (event->dbdc_band && dev->mt76.phy2)
+	if (event->dbdc_band) {
+		BUG_ON(!dev->mt76.phy2);
 		mphy = dev->mt76.phy2;
-	else
+	} else
 		mphy = &dev->mt76.phy;
 
 	ieee80211_ready_on_channel(mphy->hw);
@@ -495,26 +533,6 @@ mt7615_mcu_roc_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	duration = le32_to_cpu(event->max_interval);
 	mod_timer(&phy->roc_timer,
 		  round_jiffies_up(jiffies + msecs_to_jiffies(duration)));
-}
-
-static void
-mt7615_mcu_beacon_loss_event(struct mt7615_dev *dev, struct sk_buff *skb)
-{
-	struct mt76_connac_beacon_loss_event *event;
-	struct mt76_phy *mphy;
-	u8 band_idx = 0; /* DBDC support */
-
-	skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
-	event = (struct mt76_connac_beacon_loss_event *)skb->data;
-	if (band_idx && dev->mt76.phy2)
-		mphy = dev->mt76.phy2;
-	else
-		mphy = &dev->mt76.phy;
-
-	ieee80211_iterate_active_interfaces_atomic(mphy->hw,
-					IEEE80211_IFACE_ITER_RESUME_ALL,
-					mt76_connac_mcu_beacon_loss_iter,
-					event);
 }
 
 static void
@@ -565,6 +583,9 @@ mt7615_mcu_rx_unsolicited_event(struct mt7615_dev *dev, struct sk_buff *skb)
 					       &dev->coredump);
 		return;
 	default:
+		printk("skb->len=%d rxdsize=%d eid=%d\n", skb->len, sizeof(*rxd), rxd->eid);
+		printk("get unhandle eid=%d ext_eid=%d seq=%d\n", rxd->eid, rxd->ext_eid, rxd->seq);
+		dump_stack();
 		break;
 	}
 	dev_kfree_skb(skb);
