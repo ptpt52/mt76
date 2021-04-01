@@ -831,6 +831,7 @@ mt7615_mcu_bss_basic_tlv(struct sk_buff *skb, struct ieee80211_vif *vif,
 	bss->bcn_interval = cpu_to_le16(vif->bss_conf.beacon_int);
 	bss->network_type = cpu_to_le32(type);
 	bss->dtim_period = vif->bss_conf.dtim_period;
+	printk("mt7615_mcu_bss_basic_tlv bss->dtim_period=%d\n", bss->dtim_period);
 	bss->bmc_tx_wlan_idx = wlan_idx;
 	bss->wmm_idx = mvif->mt76.wmm_idx;
 	bss->active = enable;
@@ -2679,6 +2680,8 @@ int mt7615_mcu_set_bss_pm(struct mt7615_dev *dev, struct ieee80211_vif *vif,
 		.bss_idx = mvif->mt76.idx,
 	};
 	int err;
+
+	printk("mt7615_mcu_set_bss_pm vif->bss_conf.dtim_period=%d\n", vif->bss_conf.dtim_period);
 
 	if (vif->type != NL80211_IFTYPE_STATION)
 		return 0;
