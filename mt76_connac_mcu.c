@@ -211,13 +211,32 @@ void mt76_connac_mcu_beacon_loss_iter(void *priv, u8 *mac,
 {
 	struct mt76_vif *mvif = (struct mt76_vif *)vif->drv_priv;
 	struct mt76_connac_beacon_loss_event *event = priv;
+	struct mt7613_beacon_loss_event *mt7613_event = priv;
 
-	if (mvif->idx != event->bss_idx)
+	printk("mcu_beacon_loss_iter: mvif->idx=%d event->bss_idx=%d event->reason=%d flag=%d\n",
+			mvif->idx, event->bss_idx, event->reason,
+			!(vif->driver_flags & IEEE80211_VIF_BEACON_FILTER));
+	printk("mt7613_event->bss_idx = %02x:%02x:%02x:%02x:%02x:%02x mac=%02x:%02x:%02x:%02x:%02x:%02x mt7613_event->reason=%d\n",
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+			mt7613_event->bss_idx[0],
+			mt7613_event->bss_idx[1],
+			mt7613_event->bss_idx[2],
+			mt7613_event->bss_idx[3],
+			mt7613_event->bss_idx[4],
+			mt7613_event->bss_idx[5],
+			mt7613_event->reason);
+	//check bssid
+	if (memcmp(mac, mt7613_event->bss_idx, 6) != 0)
+		return;
+
+	//ENUM_BCN_LOSS_AP_ERROR
+	if (mt7613_event->reason != 0x12)
 		return;
 
 	if (!(vif->driver_flags & IEEE80211_VIF_BEACON_FILTER))
 		return;
 
+	printk("ieee80211_beacon_loss call\n");
 	ieee80211_beacon_loss(vif);
 }
 EXPORT_SYMBOL_GPL(mt76_connac_mcu_beacon_loss_iter);

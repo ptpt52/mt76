@@ -639,6 +639,12 @@ struct mt76_connac_beacon_loss_event {
 	u8 pad[2];
 } __packed;
 
+struct mt7613_beacon_loss_event {
+	u8 bss_idx[6];
+	u8 reason;
+	u8 pad[1];
+} __packed;
+
 struct mt76_connac_mcu_bss_event {
 	u8 bss_idx;
 	u8 is_absent;
