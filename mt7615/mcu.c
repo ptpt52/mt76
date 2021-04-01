@@ -479,6 +479,11 @@ mt7615_mcu_rx_ext_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	case MCU_EXT_EVENT_PS_SYNC:
 		//TODO
 		break;
+	case 0x23:
+		skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
+		skb->data[skb->len] = 0;
+		printk("EXT_EVENT_ID_ASSERT_DUMP:[%s]\n", skb->data);
+		break;
 	default:
 		printk("get ext unhandle eid=%d ext_eid=%d seq=%d\n", rxd->eid, rxd->ext_eid, rxd->seq);
 		break;
