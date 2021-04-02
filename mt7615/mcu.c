@@ -758,8 +758,6 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 	}
 	dev_kfree_skb(skb);
 
-	printk("mt7615_mcu_add_beacon_offload enable=%d\n", enable);
-
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_BCN_OFFLOAD, &req,
 				 sizeof(req), true);
 }
@@ -790,6 +788,12 @@ mt7615_mcu_ctrl_pm_state(struct mt7615_dev *dev, int band, int state)
 		.pm_state = state ? ENTER_PM_STATE : EXIT_PM_STATE,
 		.band_idx = band,
 	};
+
+	memset(&req, 0, sizeof(req));
+	req.pm_number = 5;
+	req.pm_state = state ? ENTER_PM_STATE : EXIT_PM_STATE;
+	req.band_idx = band;
+
 	printk("mt7615_mcu_ctrl_pm_state state=%d\n", state);
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_PM_STATE_CTRL, &req,
