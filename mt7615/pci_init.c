@@ -159,6 +159,7 @@ void mt7615_unregister_device(struct mt7615_dev *dev)
 	bool mcu_running;
 
 	mcu_running = mt7615_wait_for_mcu_init(dev);
+	printk("mcu_running=%d\n", mcu_running);
 
 	mt7615_unregister_ext_phy(dev);
 	mt76_unregister_device(&dev->mt76);
