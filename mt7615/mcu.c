@@ -692,6 +692,11 @@ mt7615_mcu_add_dev(struct mt7615_phy *phy, struct ieee80211_vif *vif,
 	if (mvif->mt76.omac_idx >= REPEATER_BSSID_START)
 		return mt7615_mcu_muar_config(dev, vif, false, enable);
 
+	printk("%s(%d): mac=%02x:%02x:%02x:%02x:%02x:%02x mvif->mt76.omac_idx=%d, mvif->mt76.band_idx=%d\n",
+			__func__, enable, vif->addr[1], vif->addr[1], vif->addr[2], vif->addr[3], vif->addr[4], vif->addr[5],
+			mvif->mt76.omac_idx, mvif->mt76.band_idx
+			);
+
 	memcpy(data.tlv.omac_addr, vif->addr, ETH_ALEN);
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_DEV_INFO_UPDATE,
 				 &data, sizeof(data), true);
@@ -839,10 +844,11 @@ mt7615_mcu_bss_basic_tlv(struct sk_buff *skb, struct ieee80211_vif *vif,
 	bss->bcn_interval = cpu_to_le16(vif->bss_conf.beacon_int);
 	bss->network_type = cpu_to_le32(type);
 	bss->dtim_period = vif->bss_conf.dtim_period;
-	printk("mt7615_mcu_bss_basic_tlv bss->dtim_period=%d\n", bss->dtim_period);
 	bss->bmc_tx_wlan_idx = wlan_idx;
 	bss->wmm_idx = mvif->mt76.wmm_idx;
 	bss->active = enable;
+
+	printk("mt7615_mcu_bss_basic_tlv bss->dtim_period=%d wlan_idx=%d wmm_idx=%d\n", bss->dtim_period, wlan_idx, mvif->mt76.wmm_idx);
 
 	return 0;
 }
@@ -930,6 +936,11 @@ mt7615_mcu_add_bss(struct mt7615_phy *phy, struct ieee80211_vif *vif,
 	if (enable && mvif->mt76.omac_idx >= EXT_BSSID_START &&
 	    mvif->mt76.omac_idx < REPEATER_BSSID_START)
 		mt7615_mcu_bss_ext_tlv(skb, mvif);
+
+	printk("%s(%d): mac=%02x:%02x:%02x:%02x:%02x:%02x mvif->mt76.omac_idx=%d, mvif->mt76.band_idx=%d\n",
+			__func__, enable, vif->addr[1], vif->addr[1], vif->addr[2], vif->addr[3], vif->addr[4], vif->addr[5],
+			mvif->mt76.omac_idx, mvif->mt76.band_idx
+			);
 
 	return mt76_mcu_skb_send_msg(&dev->mt76, skb,
 				     MCU_EXT_CMD_BSS_INFO_UPDATE, true);
