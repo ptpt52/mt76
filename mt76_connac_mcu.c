@@ -1008,6 +1008,12 @@ int mt76_connac_mcu_uni_add_dev(struct mt76_phy *phy,
 
 	memcpy(dev_req.tlv.omac_addr, vif->addr, ETH_ALEN);
 
+	printk("mt76_connac_mcu_uni_add_dev(%d): mac=%02x:%02x:%02x:%02x:%02x:%02x idx=%d\n"
+			"mvif->idx=%d, mvif->omac_idx=%d mvif->band_idx=%d mvif->wmm_idx=%d wcid->idx=%d\n",
+			enable, vif->addr[1], vif->addr[1], vif->addr[2], vif->addr[3], vif->addr[4], vif->addr[5], idx,
+			mvif->idx, mvif->omac_idx, mvif->band_idx, mvif->wmm_idx, wcid->idx
+			);
+
 	cmd = enable ? MCU_UNI_CMD_DEV_INFO_UPDATE : MCU_UNI_CMD_BSS_INFO_UPDATE;
 	data = enable ? (void *)&dev_req : (void *)&basic_req;
 	len = enable ? sizeof(dev_req) : sizeof(basic_req);
@@ -1339,6 +1345,12 @@ int mt76_connac_mcu_uni_add_bss(struct mt76_phy *phy,
 		rlm_req.rlm.sco = 1; /* SCA */
 	else if (rlm_req.rlm.control_channel > rlm_req.rlm.center_chan)
 		rlm_req.rlm.sco = 3; /* SCB */
+
+	printk("mt76_connac_mcu_uni_add_bss(%d): mac=%02x:%02x:%02x:%02x:%02x:%02x idx=%d\n"
+			"mvif->idx=%d, mvif->omac_idx=%d mvif->band_idx=%d mvif->wmm_idx=%d wcid->idx=%d\n",
+			enable, vif->addr[1], vif->addr[1], vif->addr[2], vif->addr[3], vif->addr[4], vif->addr[5], idx,
+			mvif->idx, mvif->omac_idx, mvif->band_idx, mvif->wmm_idx, wcid->idx
+			);
 
 	return mt76_mcu_send_msg(mdev, MCU_UNI_CMD_BSS_INFO_UPDATE, &rlm_req,
 				 sizeof(rlm_req), true);
