@@ -716,6 +716,7 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 	struct mt76_wcid *wcid = &dev->mt76.global_wcid;
 	struct ieee80211_mutable_offsets offs;
 	struct ieee80211_tx_info *info;
+	struct sk_buff *skb;
 	struct req {
 		u8 omac_idx;
 		u8 enable;
@@ -731,13 +732,16 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 		/* bss color change */
 		u8 bcc_cnt;
 		__le16 bcc_ie_pos;
-	} __packed req = {
-		.omac_idx = mvif->mt76.omac_idx,
-		.enable = enable,
-		.wlan_idx = wcid->idx,
-		.band_idx = mvif->mt76.band_idx,
-	};
-	struct sk_buff *skb;
+	} __packed req;
+
+	memset(&req, 0, sizeof(req));
+	req.omac_idx = mvif->mt76.omac_idx;
+	req.enable = enable;
+	req.wlan_idx = wcid->idx;
+	req.band_idx = mvif->mt76.band_idx;
+
+	if (!enable)
+		goto out;
 
 	skb = ieee80211_beacon_get_template(hw, vif, &offs);
 	if (!skb)
@@ -768,6 +772,7 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 	}
 	dev_kfree_skb(skb);
 
+out:
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_BCN_OFFLOAD, &req,
 				 sizeof(req), true);
 }
