@@ -442,6 +442,13 @@ static void mt7663_beacon_loss_iter(void *priv, u8 *mac,
 	if (!(vif->driver_flags & IEEE80211_VIF_BEACON_FILTER))
 		return;
 
+	printk("mt7663_beacon_loss_iter: event->bss_idx = %02x:%02x:%02x:%02x:%02x:%02x mac=%02x:%02x:%02x:%02x:%02x:%02x event->reason=%d beacon_filter=%d\n",
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+			event->bss_idx[0], event->bss_idx[1], event->bss_idx[2],
+			event->bss_idx[3], event->bss_idx[4], event->bss_idx[5],
+			event->reason,
+			!!(vif->driver_flags & IEEE80211_VIF_BEACON_FILTER));
+
 	ieee80211_beacon_loss(vif);
 }
 
