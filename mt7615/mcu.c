@@ -798,11 +798,12 @@ mt7615_mcu_ctrl_pm_state(struct mt7615_dev *dev, int band, int state)
 		u8 wmm_idx;
 		u8 bcn_loss_cnt;
 		u8 bcn_sp_duration;
-	} __packed req = {
-		.pm_number = 5,
-		.pm_state = state ? ENTER_PM_STATE : EXIT_PM_STATE,
-		.band_idx = band,
-	};
+	} __packed req;
+
+	memset(&req, 0, sizeof(req));
+	req.pm_number = 5;
+	req.pm_state = state ? ENTER_PM_STATE : EXIT_PM_STATE;
+	req.band_idx = band;
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_PM_STATE_CTRL, &req,
 				 sizeof(req), true);
