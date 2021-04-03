@@ -489,6 +489,11 @@ mt7615_mcu_rx_ext_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	case MCU_EXT_EVENT_TX_POWER_FEATURE_CTRL:
 		/* nothing to do */
 		break;
+	case MCU_EXT_EVENT_ASSERT_DUMP:
+		skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
+		skb->data[skb->len] = 0;
+		dev_info(dev->mt76.dev, "MCU_EXT_EVENT_ASSERT_DUMP:%s\n", skb->data);
+		break;
 	default:
 		dev_info(dev->mt76.dev, "get ext unhandle eid=%d ext_eid=%d seq=%d\n", rxd->eid, rxd->ext_eid, rxd->seq);
 		break;
