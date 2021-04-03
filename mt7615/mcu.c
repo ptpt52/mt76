@@ -736,33 +736,40 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 	req.band_idx = mvif->mt76.band_idx;
 
 	skb = ieee80211_beacon_get_template(hw, vif, &offs);
-	if (!skb)
-		return -EINVAL;
+	if (!skb) {
+		printk("mt7615_mcu_add_beacon_offload call ieee80211_beacon_get_template return NULL");
+		if (enable)
+			return -EINVAL;
+		req.pkt_len = 0;
+		req.tim_ie_pos = 0;
+		req.csa_ie_pos = 0;
+		req.csa_cnt = 0;
+	} else {
+		if (skb->len > 512 - MT_TXD_SIZE) {
+			dev_err(dev->mt76.dev, "Bcn size limit exceed\n");
+			dev_kfree_skb(skb);
+			return -EINVAL;
+		}
 
-	if (skb->len > 512 - MT_TXD_SIZE) {
-		dev_err(dev->mt76.dev, "Bcn size limit exceed\n");
+		if (mvif->mt76.band_idx) {
+			info = IEEE80211_SKB_CB(skb);
+			info->hw_queue |= MT_TX_HW_QUEUE_EXT_PHY;
+		}
+
+		mt7615_mac_write_txwi(dev, (__le32 *)(req.pkt), skb, wcid, NULL,
+				0, NULL, true);
+		memcpy(req.pkt + MT_TXD_SIZE, skb->data, skb->len);
+		req.pkt_len = cpu_to_le16(MT_TXD_SIZE + skb->len);
+		req.tim_ie_pos = cpu_to_le16(MT_TXD_SIZE + offs.tim_offset);
+		if (offs.cntdwn_counter_offs[0]) {
+			u16 csa_offs;
+
+			csa_offs = MT_TXD_SIZE + offs.cntdwn_counter_offs[0] - 4;
+			req.csa_ie_pos = cpu_to_le16(csa_offs);
+			req.csa_cnt = skb->data[offs.cntdwn_counter_offs[0]];
+		}
 		dev_kfree_skb(skb);
-		return -EINVAL;
 	}
-
-	if (mvif->mt76.band_idx) {
-		info = IEEE80211_SKB_CB(skb);
-		info->hw_queue |= MT_TX_HW_QUEUE_EXT_PHY;
-	}
-
-	mt7615_mac_write_txwi(dev, (__le32 *)(req.pkt), skb, wcid, NULL,
-			      0, NULL, true);
-	memcpy(req.pkt + MT_TXD_SIZE, skb->data, skb->len);
-	req.pkt_len = cpu_to_le16(MT_TXD_SIZE + skb->len);
-	req.tim_ie_pos = cpu_to_le16(MT_TXD_SIZE + offs.tim_offset);
-	if (offs.cntdwn_counter_offs[0]) {
-		u16 csa_offs;
-
-		csa_offs = MT_TXD_SIZE + offs.cntdwn_counter_offs[0] - 4;
-		req.csa_ie_pos = cpu_to_le16(csa_offs);
-		req.csa_cnt = skb->data[offs.cntdwn_counter_offs[0]];
-	}
-	dev_kfree_skb(skb);
 
 	printk("%s(%d): mac=%02x:%02x:%02x:%02x:%02x:%02x mvif->mt76.omac_idx=%d, mvif->mt76.band_idx=%d wcid->idx=%d\n",
 			__func__, enable, vif->addr[1], vif->addr[1], vif->addr[2], vif->addr[3], vif->addr[4], vif->addr[5],
