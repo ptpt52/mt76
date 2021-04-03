@@ -764,6 +764,11 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 	}
 	dev_kfree_skb(skb);
 
+	printk("%s(%d): mac=%02x:%02x:%02x:%02x:%02x:%02x mvif->mt76.omac_idx=%d, mvif->mt76.band_idx=%d wcid->idx=%d\n",
+			__func__, enable, vif->addr[1], vif->addr[1], vif->addr[2], vif->addr[3], vif->addr[4], vif->addr[5],
+			mvif->mt76.omac_idx, mvif->mt76.band_idx, wcid->idx
+			);
+
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_BCN_OFFLOAD, &req,
 				 sizeof(req), true);
 }
