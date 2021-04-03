@@ -2305,6 +2305,10 @@ int mt7615_mcu_set_chan_info(struct mt7615_phy *phy, int cmd)
 		.tx_streams = hweight8(phy->mt76->antenna_mask),
 		.rx_streams_mask = phy->mt76->chainmask,
 		.center_chan2 = ieee80211_frequency_to_channel(freq2),
+		.cac_case = 0,
+		.channel_band = 0,
+		.outband_freq = 0,
+		.txpower_drop = 0,
 	};
 
 	if (phy->mt76->hw->conf.flags & IEEE80211_CONF_OFFCHANNEL)
@@ -2508,6 +2512,7 @@ int mt7615_mcu_apply_rx_dcoc(struct mt7615_phy *phy)
 		.bw = mt7615_mcu_chan_bw(chandef),
 		.band = chandef->center_freq1 > 4000,
 		.dbdc_en = !!dev->mt76.phy2,
+		.success = 0,
 	};
 	u16 center_freq = chandef->center_freq1;
 	int freq_idx;
@@ -2629,6 +2634,7 @@ int mt7615_mcu_apply_tx_dpd(struct mt7615_phy *phy)
 		.bw = mt7615_mcu_chan_bw(chandef),
 		.band = chandef->center_freq1 > 4000,
 		.dbdc_en = !!dev->mt76.phy2,
+		.success = 0,
 	};
 	u16 center_freq = chandef->center_freq1;
 	int freq_idx;
@@ -2682,6 +2688,7 @@ int mt7615_mcu_set_rx_hdr_trans_blacklist(struct mt7615_dev *dev)
 		.count = 1,
 		.enable = 1,
 		.etype = cpu_to_le16(ETH_P_PAE),
+		.index = 0,
 	};
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_RX_HDR_TRANS,
@@ -2707,6 +2714,11 @@ int mt7615_mcu_set_bss_pm(struct mt7615_dev *dev, struct ieee80211_vif *vif,
 		.aid = cpu_to_le16(vif->bss_conf.aid),
 		.dtim_period = vif->bss_conf.dtim_period,
 		.bcn_interval = cpu_to_le16(vif->bss_conf.beacon_int),
+		.atim_window = 0,
+		.uapsd = 0,
+		.bmc_delivered_ac = 0,
+		.bmc_triggered_ac = 0,
+		.pad = 0,
 	};
 	struct {
 		u8 bss_idx;
@@ -2824,6 +2836,7 @@ u32 mt7615_mcu_reg_rr(struct mt76_dev *dev, u32 offset)
 		__le32 val;
 	} __packed req = {
 		.addr = cpu_to_le32(offset),
+		.val = 0,
 	};
 
 	return mt76_mcu_send_msg(dev, MCU_CMD_REG_READ, &req, sizeof(req),
