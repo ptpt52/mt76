@@ -2212,12 +2212,35 @@ int mt7615_mcu_set_chan_info(struct mt7615_phy *phy, int cmd)
 	return mt76_mcu_send_msg(&dev->mt76, cmd, &req, sizeof(req), true);
 }
 
+static int mt7663_mcu_get_temperature(struct mt7615_dev *dev)
+{
+	struct {
+		u8 ctrl_id;
+		u8 action;
+		u8 band;
+		u8 rsv[1];
+		u32 res;
+	} req = {
+		.ctrl_id = 0,
+		.action = 0,
+		.band = 0,
+		.res = 0,
+	};
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(THERMAL_CTRL), &req,
+				 sizeof(req), true);
+}
+
 int mt7615_mcu_get_temperature(struct mt7615_dev *dev)
 {
 	struct {
 		u8 action;
 		u8 rsv[3];
 	} req = {};
+
+	if (is_mt7663(&dev->mt76)) {
+		return mt7663_mcu_get_temperature(dev);
+	}
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(THERMAL_CTRL),
 				 &req, sizeof(req), true);
