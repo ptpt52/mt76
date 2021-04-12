@@ -201,6 +201,39 @@ struct mt7615_mcu_rdd_report {
 	} hw_pulse[32];
 };
 
+struct mt7663_mcu_rdd_report {
+	struct mt7615_mcu_rxd rxd;
+
+	u8 report_mode;
+	u8 band_idx;
+	u8 long_detected;
+	u8 constant_prf_detected;
+	u8 lpb_num;
+	u8 ppb_num;
+	u8 lpb_period_valid;
+	u8 lpb_width_valid;
+	u8 pri_count_m1;
+	u8 pri_count_m1th;
+	u8 pri_count_m2;
+	u8 pri_count_m2th;
+
+	struct {
+		__le32 start;
+		__le16 pulse_width;
+		__le16 pulse_power;
+		u8 pulse_mdrdy_flag;
+		u8 rsv[3];
+	} long_pulse[32];
+
+	struct {
+		__le32 start;
+		__le16 pulse_width;
+		__le16 pulse_power;
+		u8 pulse_mdrdy_flag;
+		u8 rsv[3];
+	} periodic_pulse[32];
+};
+
 enum {
 	MCU_ATE_SET_FREQ_OFFSET = 0xa,
 	MCU_ATE_SET_TX_POWER_CONTROL = 0x15,
