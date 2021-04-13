@@ -216,6 +216,8 @@ void mt7615_mac_reset_work(struct work_struct *work)
 	if (!(READ_ONCE(dev->reset_state) & MT_MCU_CMD_STOP_PDMA))
 		return;
 
+	dev_info(dev->mt76.dev, "mt7615_mac_reset_work start\n");
+
 	ieee80211_stop_queues(mt76_hw(dev));
 	if (ext_phy)
 		ieee80211_stop_queues(ext_phy->hw);
@@ -294,4 +296,5 @@ void mt7615_mac_reset_work(struct work_struct *work)
 		ieee80211_queue_delayed_work(ext_phy->hw,
 					     &phy2->mt76->mac_work, timeout);
 
+	dev_info(dev->mt76.dev, "mt7615_mac_reset_work end\n");
 }
