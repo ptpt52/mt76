@@ -100,7 +100,13 @@ void mt76_connac_pm_dequeue_skbs(struct mt76_phy *phy,
 		if (!pm->tx_q[i].skb)
 			continue;
 
-		if (wcid && wcid->sta)
+		if (!wcid) {
+			dev_kfree_skb(pm->tx_q[i].skb);
+			pm->tx_q[i].skb = NULL;
+			continue;
+		}
+
+		if (wcid->sta)
 			sta = container_of((void *)wcid, struct ieee80211_sta,
 					   drv_priv);
 
