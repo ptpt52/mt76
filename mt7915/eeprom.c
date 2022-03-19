@@ -135,6 +135,9 @@ static void mt7915_eeprom_parse_band_config(struct mt7915_phy *phy)
 
 	val = eeprom[MT_EE_WIFI_CONF + phy->band_idx];
 	val = FIELD_GET(MT_EE_WIFI_CONF0_BAND_SEL, val);
+	if (val == MT_EE_BAND_SEL_DEFAULT &&
+	    (is_mt7915(&dev->mt76) && dev->dbdc_support))
+		val = phy->band_idx ? MT_EE_BAND_SEL_5GHZ : MT_EE_BAND_SEL_2GHZ;
 
 	if (!is_mt7915(&dev->mt76)) {
 		switch (val) {
