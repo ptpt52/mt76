@@ -206,6 +206,9 @@ void mt7915_eeprom_parse_hw_cap(struct mt7915_dev *dev,
 
 		if (!is_mt7986(&dev->mt76))
 			nss_max = 2;
+
+		if (!nss)
+			nss = nss_max;
 	}
 
 	nss = min_t(u8, min_t(u8, nss_max, nss), path);
