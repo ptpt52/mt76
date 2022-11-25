@@ -2351,6 +2351,7 @@ int mt7915_mcu_init_firmware(struct mt7915_dev *dev)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_NET_MEDIATEK_SOC_WED
 	if (mtk_wed_device_active(&dev->mt76.mmio.wed)) {
 		if (is_mt7915(&dev->mt76) ||
 		    !mtk_wed_get_rx_capa(&dev->mt76.mmio.wed))
@@ -2363,6 +2364,7 @@ int mt7915_mcu_init_firmware(struct mt7915_dev *dev)
 		if (ret)
 			return ret;
 	}
+#endif
 
 	ret = mt7915_mcu_set_mwds(dev, 1);
 	if (ret)
