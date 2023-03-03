@@ -34,6 +34,10 @@
 #define MT7916_FIRMWARE_WM		"mediatek/mt7916_wm.bin"
 #define MT7916_ROM_PATCH		"mediatek/mt7916_rom_patch.bin"
 
+#define MT7981_FIRMWARE_WA		"mediatek/mt7981_wa.bin"
+#define MT7981_FIRMWARE_WM		"mediatek/mt7981_wm.bin"
+#define MT7981_ROM_PATCH		"mediatek/mt7981_rom_patch.bin"
+
 #define MT7986_FIRMWARE_WA		"mediatek/mt7986_wa.bin"
 #define MT7986_FIRMWARE_WM		"mediatek/mt7986_wm.bin"
 #define MT7986_FIRMWARE_WM_MT7975	"mediatek/mt7986_wm_mt7975.bin"
@@ -43,6 +47,9 @@
 #define MT7915_EEPROM_DEFAULT		"mediatek/mt7915_eeprom.bin"
 #define MT7915_EEPROM_DEFAULT_DBDC	"mediatek/mt7915_eeprom_dbdc.bin"
 #define MT7916_EEPROM_DEFAULT		"mediatek/mt7916_eeprom.bin"
+
+#define MT7981_EEPROM_MT7976_DEFAULT_DBDC	"mediatek/mt7981_eeprom_mt7976_dbdc.bin"
+
 #define MT7986_EEPROM_MT7975_DEFAULT		"mediatek/mt7986_eeprom_mt7975.bin"
 #define MT7986_EEPROM_MT7975_DUAL_DEFAULT	"mediatek/mt7986_eeprom_mt7975_dual.bin"
 #define MT7986_EEPROM_MT7976_DEFAULT		"mediatek/mt7986_eeprom_mt7976.bin"
@@ -420,8 +427,7 @@ mt7915_ext_phy(struct mt7915_dev *dev)
 static inline u32 mt7915_check_adie(struct mt7915_dev *dev, bool sku)
 {
 	u32 mask = sku ? MT_CONNINFRA_SKU_MASK : MT_ADIE_TYPE_MASK;
-
-	if (!is_mt7986(&dev->mt76))
+	if (!is_mt798x(&dev->mt76))
 		return 0;
 
 	return mt76_rr(dev, MT_CONNINFRA_SKU_DEC_ADDR) & mask;
