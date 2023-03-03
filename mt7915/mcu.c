@@ -2848,6 +2848,11 @@ int mt7915_mcu_apply_group_cal(struct mt7915_dev *dev)
 	if (1 || !(eep[MT_EE_DO_PRE_CAL] & MT_EE_WIFI_CAL_GROUP))
 		return 0;
 
+	if (!cal) {
+		dev_err(dev->mt76.dev, "No calibration data. Skipping PreCal");
+		return 0;
+	}
+
 	/*
 	 * Items: Rx DCOC, RSSI DCOC, Tx TSSI DCOC, Tx LPFG
 	 * Tx FDIQ, Tx DCIQ, Rx FDIQ, Rx FIIQ, ADCDCOC
@@ -2931,6 +2936,11 @@ int mt7915_mcu_apply_tx_dpd(struct mt7915_phy *phy)
 
 	if (1 || !(eep[MT_EE_DO_PRE_CAL] & MT_EE_WIFI_CAL_DPD))
 		return 0;
+
+	if (!cal) {
+		dev_err(dev->mt76.dev, "No calibration data. Skipping PreCal");
+		return 0;
+	}
 
 	idx = mt7915_dpd_freq_idx(center_freq, chandef->width);
 	if (idx < 0)
