@@ -15,7 +15,7 @@ static int mt7915_eeprom_load_precal(struct mt7915_dev *dev)
 	if (!dev->flash_mode)
 		return 0;
 
-	if (val != (MT_EE_WIFI_CAL_DPD | MT_EE_WIFI_CAL_GROUP))
+	if (!(val & (MT_EE_WIFI_CAL_DPD | MT_EE_WIFI_CAL_GROUP)))
 		return 0;
 
 	val = MT_EE_CAL_GROUP_SIZE + MT_EE_CAL_DPD_SIZE;
