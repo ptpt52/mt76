@@ -282,12 +282,16 @@ struct mt76_queue_ops {
 	void (*reset_q)(struct mt76_dev *dev, struct mt76_queue *q);
 };
 
+#define MT_PHY_TYPE_LEGACY	GENMASK(2, 0)
+#define MT_PHY_TYPE_EXT		GENMASK(7, 3)
+
 enum mt76_phy_type {
 	MT_PHY_TYPE_CCK,
 	MT_PHY_TYPE_OFDM,
 	MT_PHY_TYPE_HT,
 	MT_PHY_TYPE_HT_GF,
 	MT_PHY_TYPE_VHT,
+	MT_PHY_TYPE_HE_REMAP,
 	MT_PHY_TYPE_HE_SU = 8,
 	MT_PHY_TYPE_HE_EXT_SU,
 	MT_PHY_TYPE_HE_TB,

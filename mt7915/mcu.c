@@ -3733,6 +3733,167 @@ out:
 	return ret;
 }
 
+static int
+mt7915_mcu_parse_tx_gi(struct mt76_dev *dev, u8 mode, u8 gi, u8 bw,
+                       struct rate_info *rate)
+{
+	/* Legacy drivers only use 3 bits for PHY mode. For backward
+	 * compatibility, HE and newer PHY mode indices are remapped
+	 * to the extended bits.
+	 */
+	if (u8_get_bits(mode, MT_PHY_TYPE_LEGACY) == MT_PHY_TYPE_HE_REMAP)
+		mode = u8_get_bits(mode, MT_PHY_TYPE_EXT);
+
+	switch (mode) {
+	case MT_PHY_TYPE_CCK:
+	case MT_PHY_TYPE_OFDM:
+		break;
+	case MT_PHY_TYPE_HT:
+	case MT_PHY_TYPE_HT_GF:
+	case MT_PHY_TYPE_VHT:
+		if (gi)
+			rate->flags |= RATE_INFO_FLAGS_SHORT_GI;
+		break;
+	case MT_PHY_TYPE_HE_SU:
+	case MT_PHY_TYPE_HE_EXT_SU:
+	case MT_PHY_TYPE_HE_TB:
+	case MT_PHY_TYPE_HE_MU:
+		if (!is_mt7915(dev)) {
+			switch (bw) {
+			case MCU_PHY_BW_20:
+				gi = u8_get_bits(gi, HE_GI_BW_20);
+				break;
+			case MCU_PHY_BW_40:
+				gi = u8_get_bits(gi, HE_GI_BW_40);
+				break;
+			case MCU_PHY_BW_80:
+				gi = u8_get_bits(gi, HE_GI_BW_80);
+				break;
+			case MCU_PHY_BW_160:
+				gi = u8_get_bits(gi, HE_GI_BW_160);
+				break;
+			default:
+				return -EINVAL;
+			}
+		}
+
+		if (gi > NL80211_RATE_INFO_HE_GI_3_2)
+			return -EINVAL;
+
+		rate->he_gi = gi;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int mt7915_mcu_get_tx_rate_v1(struct mt7915_phy *phy, u16 wcidx)
+{
+	struct mt7915_mcu_ra_info_v1 *rate;
+	struct mt7915_dev *dev = phy->dev;
+	struct mt76_phy *mphy = phy->mt76;
+	struct mt76_wcid *wcid;
+	struct sk_buff *skb;
+	int ret;
+
+	struct {
+		__le32 category;
+		u8 wcidx_lo;
+		u8 band;
+		u8 wcidx_hi;
+		u8 rsv[5];
+	} req = {
+		.category = cpu_to_le32(MCU_GET_TX_RATE),
+		.wcidx_lo = to_wcid_lo(wcidx),
+		.band = mphy->band_idx,
+		.wcidx_hi = to_wcid_hi(wcidx)
+	};
+
+	ret = mt76_mcu_send_and_get_msg(&dev->mt76, MCU_EXT_QUERY(GET_TX_STAT),
+                                        &req, sizeof(req), true, &skb);
+	if (ret)
+		return ret;
+
+	rate = (struct mt7915_mcu_ra_info_v1 *)skb->data;
+	if ((rate->wcidx_hi << 8 | rate->wcidx_lo) != wcidx) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	rcu_read_lock();
+	wcid = rcu_dereference(dev->mt76.wcid[wcidx]);
+	if (!wcid) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	ret = mt7915_mcu_parse_tx_gi(mphy->dev, rate->mode, rate->gi,
+                                     rate->bw, &wcid->rate);
+unlock:
+	rcu_read_unlock();
+out:
+	dev_kfree_skb(skb);
+
+	return ret;
+}
+
+int mt7915_mcu_get_tx_rate_v2(struct mt7915_phy *phy, u16 wcidx)
+{
+	struct mt7915_mcu_ra_info_v2 *rate;
+	struct mt7915_dev *dev = phy->dev;
+	struct mt76_phy *mphy = phy->mt76;
+	struct mt76_wcid *wcid;
+	struct sk_buff *skb;
+	int ret;
+
+	struct {
+		u8 category;
+		u8 band;
+		__le16 wcidx;
+	} req = {
+		.category = MCU_GET_TX_RATE,
+		.band = mphy->band_idx,
+		.wcidx = cpu_to_le16(wcidx)
+	};
+
+	ret = mt76_mcu_send_and_get_msg(&dev->mt76, MCU_EXT_QUERY(GET_TX_STAT),
+					&req, sizeof(req), true, &skb);
+	if (ret)
+		return ret;
+
+	rate = (struct mt7915_mcu_ra_info_v2 *)skb->data;
+	if (le16_to_cpu(rate->wcidx) != wcidx) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	rcu_read_lock();
+	wcid = rcu_dereference(dev->mt76.wcid[wcidx]);
+	if (!wcid) {
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	ret = mt7915_mcu_parse_tx_gi(mphy->dev, rate->mode, rate->gi,
+                                     rate->bw, &wcid->rate);
+unlock:
+	rcu_read_unlock();
+out:
+	dev_kfree_skb(skb);
+
+	return ret;
+}
+
+int mt7915_mcu_get_tx_rate(struct mt7915_phy *phy, u16 wcidx)
+{
+	if (is_mt7915(&phy->dev->mt76))
+		return mt7915_mcu_get_tx_rate_v1(phy, wcidx);
+	else
+		return mt7915_mcu_get_tx_rate_v2(phy, wcidx);
+}
+
 int mt7915_mcu_update_bss_color(struct mt7915_dev *dev, struct ieee80211_vif *vif,
 				struct cfg80211_he_bss_color *he_bss_color)
 {

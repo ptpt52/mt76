@@ -152,6 +152,61 @@ struct mt7915_mcu_eeprom_info {
 	u8 data[16];
 } __packed;
 
+enum {
+	MCU_PHY_BW_20 = 0,
+	MCU_PHY_BW_40,
+	MCU_PHY_BW_80,
+	MCU_PHY_BW_160,
+	MCU_PHY_BW_10,
+	MCU_PHY_BW_5,
+	MCU_PHY_BW_8080,
+	MCU_PHY_BW_320,
+	MCU_PHY_BW_NUM
+};
+
+#define HE_GI_BW_20	GENMASK(1, 0)
+#define HE_GI_BW_40	GENMASK(3, 2)
+#define HE_GI_BW_80	GENMASK(5, 4)
+#define HE_GI_BW_160	GENMASK(7, 6)
+
+struct mt7915_mcu_ra_info_v1 {
+	u8 wcidx_lo;
+	u8 band;
+	u8 wcidx_hi;
+	u8 rsv1[46];
+
+	u8 mode;
+	u8 flags;
+	u8 stbc;
+	u8 gi;
+	u8 bw;
+	u8 ldpc;
+	u8 mcs;
+	u8 nss;
+	u8 ltf;
+
+	u8 rsv2[8];
+};
+
+struct mt7915_mcu_ra_info_v2 {
+	u8 category;
+	u8 rsv1;
+	__le16 num;
+	__le16 wcidx;
+
+	u8 mode;
+	u8 flags;
+	u8 stbc;
+	u8 gi;
+	u8 bw;
+	u8 ldpc;
+	u8 mcs;
+	u8 nss;
+	u8 ltf;
+
+	u8 rsv2;
+};
+
 struct mt7915_mcu_phy_rx_info {
 	u8 category;
 	u8 rate;
@@ -528,4 +583,7 @@ mt7915_get_power_bound(struct mt7915_phy *phy, s8 txpower)
 	return txpower;
 }
 
+enum {
+	MCU_GET_TX_RATE = 4
+};
 #endif
