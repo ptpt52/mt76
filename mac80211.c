@@ -927,6 +927,7 @@ int mt76_set_channel(struct mt76_phy *phy, struct cfg80211_chan_def *chandef,
 	struct mt76_dev *dev = phy->dev;
 	int timeout = HZ / 5;
 	int ret;
+	unsigned long was_scanning = ieee80211_get_scanning(hw);
 
 	cancel_delayed_work_sync(&phy->mac_work);
 
@@ -948,7 +949,7 @@ int mt76_set_channel(struct mt76_phy *phy, struct cfg80211_chan_def *chandef,
 	if (!offchannel)
 		phy->main_chan = chandef->chan;
 
-	if (chandef->chan != phy->main_chan)
+	if (chandef->chan != phy->main_chan || was_scanning)
 		memset(phy->chan_state, 0, sizeof(*phy->chan_state));
 	mt76_worker_enable(&dev->tx_worker);
 
