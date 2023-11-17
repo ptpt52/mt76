@@ -948,7 +948,7 @@ int mt76_set_channel(struct mt76_phy *phy, struct cfg80211_chan_def *chandef,
 	if (!offchannel)
 		phy->main_chan = chandef->chan;
 
-	if (chandef->chan != phy->main_chan)
+	if (chandef->chan != phy->main_chan || ieee80211_get_scanning(phy->hw))
 		memset(phy->chan_state, 0, sizeof(*phy->chan_state));
 	mt76_worker_enable(&dev->tx_worker);
 
