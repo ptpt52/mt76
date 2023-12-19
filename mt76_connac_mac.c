@@ -714,13 +714,16 @@ bool mt76_connac2_mac_add_txs_skb(struct mt76_dev *dev, struct mt76_wcid *wcid,
 				  int pid, __le32 *txs_data)
 {
 	struct sk_buff_head list;
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 
 	if (le32_get_bits(txs_data[0], MT_TXS0_TXS_FORMAT) == MT_TXS_PPDU_FMT)
 		return false;
 
 	mt76_tx_status_lock(dev, &list);
-	skb = mt76_tx_status_skb_get(dev, wcid, pid, &list);
+
+	if (le32_get_bits(txs_data[0], MT_TXS0_TXS_FORMAT) == MT_TXS_MPDU_FMT)
+		skb = mt76_tx_status_skb_get(dev, wcid, pid, &list);
+
 	if (skb) {
 		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
