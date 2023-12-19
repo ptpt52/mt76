@@ -844,9 +844,9 @@ u32 mt7915_wed_init_buf(void *ptr, dma_addr_t phys, int token_id)
 
 	txp->token = cpu_to_le16(token_id);
 	txp->nbuf = 1;
-	txp->buf[0] = cpu_to_le32(phys + MT_TXD_SIZE + sizeof(*txp));
+	txp->buf[0] = cpu_to_le32(phys + MT_TXD_TXP_BUF_SIZE);
 
-	return MT_TXD_SIZE + sizeof(*txp);
+	return MT_TXD_TXP_BUF_SIZE;
 }
 
 static void
@@ -895,6 +895,7 @@ mt7915_mac_tx_free(struct mt7915_dev *dev, void *data, int len)
 	LIST_HEAD(free_list);
 	void *end = data + len;
 	bool v3, wake = false;
+	bool with_txwi = true;
 	u16 total, count = 0;
 	u32 txd = le32_to_cpu(free->txd);
 	__le32 *cur_info;
@@ -968,12 +969,15 @@ mt7915_mac_tx_free(struct mt7915_dev *dev, void *data, int len)
 			txwi = mt76_token_release(mdev, msdu, &wake);
 			if (!txwi)
 				continue;
+			else
+				with_txwi = false;
 
 			mt76_connac2_txwi_free(mdev, txwi, sta, &free_list);
 		}
 	}
 
-	mt7915_mac_tx_free_done(dev, &free_list, wake);
+	if (!with_txwi)
+		mt7915_mac_tx_free_done(dev, &free_list, wake);
 }
 
 static void
