@@ -178,7 +178,7 @@ void mt76_mmio_wed_offload_disable(struct mtk_wed_device *wed)
 	struct mt76_dev *dev = container_of(wed, struct mt76_dev, mmio.wed);
 
 	spin_lock_bh(&dev->token_lock);
-	dev->token_size = dev->drv->token_size;
+	dev->token_size = wed->wlan.token_start;
 	spin_unlock_bh(&dev->token_lock);
 }
 EXPORT_SYMBOL_GPL(mt76_mmio_wed_offload_disable);

@@ -13,7 +13,7 @@
 #include "../trace.h"
 #include "../dma.h"
 
-static bool wed_enable;
+static bool wed_enable = true;
 module_param(wed_enable, bool, 0644);
 MODULE_PARM_DESC(wed_enable, "Enable Wireless Ethernet Dispatch support");
 
@@ -687,6 +687,7 @@ int mt7915_mmio_wed_init(struct mt7915_dev *dev, void *pdev_ptr,
 
 	*irq = wed->irq;
 	dev->mt76.dma_dev = wed->dev;
+	dev->mt76.token_size = wed->wlan.token_start;
 
 	ret = dma_set_mask(wed->dev, DMA_BIT_MASK(32));
 	if (ret)
