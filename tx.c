@@ -343,6 +343,29 @@ mt76_tx(struct mt76_phy *phy, struct ieee80211_sta *sta,
 		ieee80211_get_tx_rates(info->control.vif, sta, skb,
 				       info->control.rates, 1);
 
+	if (!wcid) {
+		struct mt76_dev *dev = phy->dev;
+		struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
+		struct mt76_queue *q;
+
+		int qid = skb_get_queue_mapping(skb);
+
+		if ((dev->drv->drv_flags & MT_DRV_HW_MGMT_TXQ) &&
+				!(info->flags & IEEE80211_TX_CTL_HW_80211_ENCAP) &&
+				!ieee80211_is_data(hdr->frame_control) &&
+				!ieee80211_is_bufferable_mmpdu(skb)) {
+			qid = MT_TXQ_PSD;
+		}
+
+		q = phy->q_tx[qid];
+
+		spin_lock_bh(&q->lock);
+		__mt76_tx_queue_skb(phy, qid, skb, wcid, sta, NULL);
+		dev->queue_ops->kick(dev, q);
+		spin_unlock_bh(&q->lock);
+		return;
+	}
+
 	info->hw_queue |= FIELD_PREP(MT_TX_HW_QUEUE_PHY, phy->band_idx);
 
 	spin_lock_bh(&wcid->tx_pending.lock);
