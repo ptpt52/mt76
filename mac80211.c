@@ -1642,8 +1642,14 @@ int mt76_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		return mt76_sta_add(phy, vif, sta);
 
 	if (old_state == IEEE80211_STA_NONE &&
-	    new_state == IEEE80211_STA_NOTEXIST)
+	    new_state == IEEE80211_STA_NOTEXIST) {
 		mt76_sta_remove(phy, vif, sta);
+		struct mt76_wcid *wcid = (struct mt76_wcid *)sta->drv_priv;
+		if (!wcid || !wcid->tx_pending.prev || !wcid->tx_pending.next) {
+			dev_warn(dev->dev, "Un-initialized STA %pM wcid %d in mt76_tx (wcid=%p)\n", sta ? sta->addr : NULL, wcid ? wcid->idx : -1, wcid);
+			return 0;
+		}
+	}
 
 	if (!dev->drv->sta_event)
 		return 0;
