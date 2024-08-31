@@ -423,7 +423,6 @@ static void mt76x02_reset_state(struct mt76x02_dev *dev)
 		vif = container_of(priv, struct ieee80211_vif, drv_priv);
 
 		__mt76_sta_remove(&dev->mphy, vif, sta);
-		memset(msta, 0, sizeof(*msta));
 	}
 
 	dev->mt76.vif_mask = 0;
