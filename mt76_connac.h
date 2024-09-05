@@ -131,7 +131,6 @@ struct mt76_connac_sta_key_conf {
 };
 
 #define MT_TXP_MAX_BUF_NUM		6
-#define MT_TXD_TXP_BUF_SIZE		128
 
 struct mt76_connac_fw_txp {
 	__le16 flags;

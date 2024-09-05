@@ -42,14 +42,9 @@ bool ____mt76_poll_msec(struct mt76_dev *dev, u32 offset, u32 mask, u32 val,
 }
 EXPORT_SYMBOL_GPL(____mt76_poll_msec);
 
-int __mt76_wcid_alloc(u32 *mask, int size, u8 flag)
+int mt76_wcid_alloc(u32 *mask, int size)
 {
-#define MT76_WED_WDS_MIN    256
-#define MT76_WED_WDS_CNT    16
-
 	int i, idx = 0, cur;
-	int min = MT76_WED_WDS_MIN;
-	int max = min + MT76_WED_WDS_CNT;
 
 	for (i = 0; i < DIV_ROUND_UP(size, 32); i++) {
 		idx = ffs(~mask[i]);
@@ -58,45 +53,16 @@ int __mt76_wcid_alloc(u32 *mask, int size, u8 flag)
 
 		idx--;
 		cur = i * 32 + idx;
-
-		switch (flag) {
-		case MT76_WED_ACTIVE:
-			if (cur >= min && cur < max)
-				continue;
-
-			if (cur >= size) {
-				u32 end = MT76_WED_WDS_CNT - 1;
-
-				i = min / 32;
-				idx = ffs(~mask[i] & GENMASK(end, 0));
-				if (!idx)
-					goto error;
-				idx--;
-				cur = min + idx;
-			}
-
+		if (cur >= size)
 			break;
-		case MT76_WED_WDS_ACTIVE:
-			if (cur < min)
-				continue;
-			if (cur >= max)
-				goto error;
-
-			break;
-		default:
-			if (cur >= size)
-				goto error;
-			break;
-		}
 
 		mask[i] |= BIT(idx);
 		return cur;
 	}
 
-error:
 	return -1;
 }
-EXPORT_SYMBOL_GPL(__mt76_wcid_alloc);
+EXPORT_SYMBOL_GPL(mt76_wcid_alloc);
 
 int mt76_get_min_avg_rssi(struct mt76_dev *dev, bool ext_phy)
 {
