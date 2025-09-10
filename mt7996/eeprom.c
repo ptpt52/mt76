@@ -208,37 +208,47 @@ static int mt7996_eeprom_load(struct mt7996_dev *dev)
 	}
 
 	if (!dev->flash_mode) {
-		u32 eeprom_blk_size = MT7996_EEPROM_BLOCK_SIZE;
-		u32 block_num = DIV_ROUND_UP(MT7996_EEPROM_SIZE, eeprom_blk_size);
+		u32 eeprom_blk_size, block_num;
 		u8 free_block_num;
 		int i;
 
 		memset(dev->mt76.eeprom.data, 0, MT7996_EEPROM_SIZE);
-		ret = mt7996_mcu_get_eeprom_free_block(dev, &free_block_num);
-		if (ret < 0)
-			return ret;
+		if (!mt7996_has_ext_eeprom(dev)) {
+			/* efuse mode */
+			dev->eeprom_mode = EFUSE_MODE;
+			eeprom_blk_size = MT7996_EEPROM_BLOCK_SIZE;
+			ret = mt7996_mcu_get_efuse_free_block(dev, &free_block_num);
+			if (ret < 0)
+				return ret;
 
-		/* efuse info isn't enough */
-		if (free_block_num >= 59) {
-			use_default = true;
-			goto out;
+			/* efuse info isn't enough */
+			if (free_block_num >= 59) {
+				use_default = true;
+				goto out;
+			}
+		} else {
+			/* external eeprom mode */
+			dev->eeprom_mode = EXT_EEPROM_MODE;
+			eeprom_blk_size = MT7996_EXT_EEPROM_BLOCK_SIZE;
 		}
 
 		/* check if eeprom data from fw is valid */
-		if (mt7996_mcu_get_eeprom(dev, 0, NULL, 0) ||
+			if (mt7996_mcu_get_eeprom(dev, 0, NULL, eeprom_blk_size,
+					dev->eeprom_mode) ||
 		    mt7996_check_eeprom(dev)) {
 			use_default = true;
 			goto out;
 		}
 
 		/* read eeprom data from fw */
+		block_num = DIV_ROUND_UP(MT7996_EEPROM_SIZE, eeprom_blk_size);
 		for (i = 1; i < block_num; i++) {
 			u32 len = eeprom_blk_size;
 
 			if (i == block_num - 1)
 				len = MT7996_EEPROM_SIZE % eeprom_blk_size;
 			ret = mt7996_mcu_get_eeprom(dev, i * eeprom_blk_size,
-						    NULL, len);
+						    NULL, len, dev->eeprom_mode);
 			if (ret && ret != -EINVAL) {
 				use_default = true;
 				goto out;

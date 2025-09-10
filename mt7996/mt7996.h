@@ -81,6 +81,7 @@
 
 #define MT7996_EEPROM_SIZE		7680
 #define MT7996_EEPROM_BLOCK_SIZE	16
+#define MT7996_EXT_EEPROM_BLOCK_SIZE	1024
 #define MT7996_TOKEN_SIZE		16384
 #define MT7996_HW_TOKEN_SIZE		8192
 
@@ -163,6 +164,14 @@ enum mt7996_fem_type {
 	MT7996_FEM_EXT,
 	MT7996_FEM_INT,
 	MT7996_FEM_MIX,
+};
+
+enum mt7996_eeprom_mode {
+	DEFAULT_BIN_MODE,
+	EFUSE_MODE,
+	FLASH_MODE,
+	BIN_FILE_MODE,
+	EXT_EEPROM_MODE,
 };
 
 enum mt7996_txq_id {
@@ -473,6 +482,8 @@ struct mt7996_dev {
 		struct list_head page_map[MT7996_RRO_MSDU_PG_HASH_SIZE];
 	} wed_rro;
 
+	u8 eeprom_mode;
+
 	bool ibf;
 	u8 fw_debug_wm;
 	u8 fw_debug_wa;
@@ -578,6 +589,18 @@ mt7996_band_valid(struct mt7996_dev *dev, u8 band)
 		return band <= MT_BAND1;
 
 	return band <= MT_BAND2;
+}
+
+static inline bool
+mt7996_has_ext_eeprom(struct mt7996_dev *dev)
+{
+	switch (mt76_chip(&dev->mt76)) {
+	case MT7996_DEVICE_ID:
+		return false;
+	case MT7992_DEVICE_ID:
+	default:
+		return true;
+	}
 }
 
 static inline struct mt7996_phy *
@@ -707,8 +730,11 @@ int mt7996_mcu_set_fixed_rate_ctrl(struct mt7996_dev *dev,
 int mt7996_mcu_set_fixed_field(struct mt7996_dev *dev, struct mt7996_sta *msta,
 			       void *data, u8 link_id, u32 field);
 int mt7996_mcu_set_eeprom(struct mt7996_dev *dev);
-int mt7996_mcu_get_eeprom(struct mt7996_dev *dev, u32 offset, u8 *buf, u32 buf_len);
-int mt7996_mcu_get_eeprom_free_block(struct mt7996_dev *dev, u8 *block_num);
+int mt7996_mcu_get_eeprom(struct mt7996_dev *dev, u32 offset, u8 *buf, u32 buf_len,
+			  enum mt7996_eeprom_mode mode);
+int mt7996_mcu_get_efuse_free_block(struct mt7996_dev *dev, u8 *block_num);
+int mt7996_mcu_write_ext_eeprom(struct mt7996_dev *dev, u32 offset,
+				u32 data_len, u8 *write_buf);
 int mt7996_mcu_get_chip_config(struct mt7996_dev *dev, u32 *cap);
 int mt7996_mcu_set_ser(struct mt7996_dev *dev, u8 action, u8 set, u8 band);
 int mt7996_mcu_set_txbf(struct mt7996_dev *dev, u8 action);
