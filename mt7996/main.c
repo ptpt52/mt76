@@ -410,12 +410,23 @@ void mt7996_vif_link_remove(struct mt76_phy *mphy, struct ieee80211_vif *vif,
 		struct ieee80211_bss_conf *iter;
 		unsigned int link_id;
 
+		/* Primary link will be removed, look for a new one */
 		mvif->mt76.deflink_id = IEEE80211_LINK_UNSPECIFIED;
 		for_each_vif_active_link(vif, iter, link_id) {
-			if (link_id != IEEE80211_LINK_UNSPECIFIED) {
-				mvif->mt76.deflink_id = link_id;
-				break;
+			struct mt7996_vif_link *link;
+
+			link = mt7996_vif_link(dev, vif, link_id);
+			if (!link)
+				continue;
+
+			if (vif->txq) {
+				struct mt76_txq *mtxq;
+
+				mtxq = (struct mt76_txq *)vif->txq->drv_priv;
+				mtxq->wcid = link->msta_link.wcid.idx;
 			}
+			mvif->mt76.deflink_id = link_id;
+			break;
 		}
 	}
 
