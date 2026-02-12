@@ -1471,6 +1471,13 @@ static inline void mt76_insert_hdr_pad(struct sk_buff *skb)
 	if (len % 4 == 0)
 		return;
 
+	if (unlikely(skb_headroom(skb) < 2)) {
+		if (pskb_expand_head(skb, 2, 0, GFP_ATOMIC)) {
+			pr_err("mt76: failed to expand headroom for padding\n");
+			return;
+		}
+	}
+
 	skb_push(skb, 2);
 	memmove(skb->data, skb->data + 2, len);
 
