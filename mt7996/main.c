@@ -205,7 +205,7 @@ mt7996_set_hw_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	struct mt7996_vif_link *link;
 	int idx = key->keyidx;
 	u8 *wcid_keyidx;
-	bool is_bigtk;
+	bool is_bigtk, is_igtk;
 	int err;
 
 	link = mt7996_vif_link(dev, vif, link_id);
@@ -231,15 +231,20 @@ mt7996_set_hw_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	wcid_keyidx = &msta_link->wcid.hw_key_idx;
 
 	is_bigtk = key->keyidx == 6 || key->keyidx == 7;
+	is_igtk = key->cipher == WLAN_CIPHER_SUITE_AES_CMAC &&
+		  (key->keyidx == 4 || key->keyidx == 5);
+	/* IGTK updates must batch a successfully installed CCMP data key. */
+	if (cmd == SET_KEY && is_igtk && !msta_link->bip_valid)
+		return -EOPNOTSUPP;
+
 	switch (key->cipher) {
 	case WLAN_CIPHER_SUITE_AES_CMAC:
 	case WLAN_CIPHER_SUITE_BIP_CMAC_256:
 	case WLAN_CIPHER_SUITE_BIP_GMAC_128:
 	case WLAN_CIPHER_SUITE_BIP_GMAC_256:
-		if (is_bigtk) {
-			wcid_keyidx = &msta_link->wcid.hw_key_idx2;
-			key->flags |= IEEE80211_KEY_FLAG_GENERATE_MMIE;
-		}
+		/* IGTK shares the GTK WCID; keep both data and BIGTK indices. */
+		wcid_keyidx = is_bigtk ? &msta_link->wcid.hw_key_idx2 : NULL;
+		key->flags |= IEEE80211_KEY_FLAG_GENERATE_MMIE;
 		break;
 	default:
 		break;
@@ -249,7 +254,7 @@ mt7996_set_hw_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	if (!link_conf)
 		link_conf = &vif->bss_conf;
 
-	if (cmd == SET_KEY && !sta && !link->mt76.cipher) {
+	if (cmd == SET_KEY && !sta && key->keyidx < 4 && !link->mt76.cipher) {
 		struct mt7996_phy *phy = mt7996_vif_link_phy(link);
 
 		link->mt76.cipher =
@@ -259,10 +264,17 @@ mt7996_set_hw_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 						&link->mt76, msta_link, true);
 	}
 
-	if (cmd == SET_KEY)
-		*wcid_keyidx = idx;
-	else if (idx == *wcid_keyidx)
-		*wcid_keyidx = -1;
+	if (wcid_keyidx) {
+		if (cmd == SET_KEY)
+			*wcid_keyidx = idx;
+		else if (idx == *wcid_keyidx)
+			*wcid_keyidx = -1;
+	}
+
+	/* Do not reuse a removed or replaced data key in a BIP batch. */
+	if (key->keyidx < 4 &&
+	    (cmd == SET_KEY || key->keyidx == msta_link->bip.keyidx))
+		msta_link->bip_valid = false;
 
 	/* only do remove key for BIGTK */
 	if (cmd != SET_KEY && !is_bigtk)
@@ -270,9 +282,16 @@ mt7996_set_hw_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 
 	mt76_wcid_key_link_setup(&msta_link->wcid, key);
 
-	err = mt7996_mcu_add_key(&dev->mt76, link, key,
+	err = mt7996_mcu_add_key(&dev->mt76, link,
+				 msta_link->bip_valid ? &msta_link->bip : NULL, key,
 				 MCU_WMWA_UNI_CMD(STA_REC_UPDATE),
 				 &msta_link->wcid, cmd);
+
+	if (!err && cmd == SET_KEY && key->cipher == WLAN_CIPHER_SUITE_CCMP) {
+		memcpy(msta_link->bip.key, key->key, key->keylen);
+		msta_link->bip.keyidx = key->keyidx;
+		msta_link->bip_valid = true;
+	}
 
 	/* remove and add beacon in order to enable beacon protection */
 	if (cmd == SET_KEY && is_bigtk && link_conf->enable_beacon) {
@@ -469,6 +488,7 @@ int mt7996_vif_link_add(struct mt76_phy *mphy, struct ieee80211_vif *vif,
 	msta_link->wcid.link_valid = ieee80211_vif_is_mld(vif);
 	msta_link->wcid.tx_info |= MT_WCID_TX_INFO_SET;
 	mt76_wcid_init(&msta_link->wcid, band_idx);
+	msta_link->bip_valid = false;
 
 	if (vif->type != NL80211_IFTYPE_AP &&
 	    (!mlink->omac_idx || mlink->omac_idx > 3))
@@ -868,6 +888,9 @@ static int mt7996_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	case WLAN_CIPHER_SUITE_SMS4:
 		break;
 	case WLAN_CIPHER_SUITE_AES_CMAC:
+		if (key->keyidx == 4 || key->keyidx == 5)
+			break;
+		fallthrough;
 	case WLAN_CIPHER_SUITE_BIP_CMAC_256:
 	case WLAN_CIPHER_SUITE_BIP_GMAC_128:
 	case WLAN_CIPHER_SUITE_BIP_GMAC_256:
@@ -1426,6 +1449,7 @@ mt7996_mac_sta_init_link(struct mt7996_dev *dev,
 
 	rcu_assign_pointer(dev->mt76.wcid[idx], &msta_link->wcid);
 	mt76_wcid_init(&msta_link->wcid, phy->mt76->band_idx);
+	msta_link->bip_valid = false;
 
 	return 0;
 }

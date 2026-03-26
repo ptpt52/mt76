@@ -3463,6 +3463,7 @@ void mt7996_mcu_update_sta_rec_bw(void *data, struct ieee80211_sta *sta)
 static int
 mt7996_mcu_sta_key_tlv(struct mt76_dev *dev, struct mt76_wcid *wcid,
 		       struct sk_buff *skb,
+		       struct mt76_connac_sta_key_conf *sta_key_conf,
 		       struct ieee80211_key_conf *key,
 		       enum set_key_cmd cmd)
 {
@@ -3488,6 +3489,35 @@ mt7996_mcu_sta_key_tlv(struct mt76_dev *dev, struct mt76_wcid *wcid,
 	cipher = mt76_connac_mcu_get_cipher(key->cipher);
 	if (cipher == MCU_CIPHER_NONE)
 		return -EOPNOTSUPP;
+
+	if (cipher == MCU_CIPHER_BIP_CMAC_128 &&
+	    (key->keyidx == 4 || key->keyidx == 5)) {
+		if (!sta_key_conf)
+			return -EOPNOTSUPP;
+
+		/* Batch IGTK with an installed CCMP key for FT-SAE.
+		 * BIGTK must use the beacon protection mapping below.
+		 */
+		sec_key->mgmt_prot = 0;
+		sec_key->cipher_id = MCU_CIPHER_AES_CCMP;
+		sec_key->cipher_len = sizeof(*sec_key);
+		sec_key->key_id = sta_key_conf->keyidx;
+		sec_key->key_len = 16;
+		sec_key->need_resp = 0;
+		memcpy(sec_key->key, sta_key_conf->key, 16);
+
+		sec_key = &sec->key[1];
+		sec_key->wlan_idx = cpu_to_le16(wcid->idx);
+		sec_key->mgmt_prot = 1;
+		sec_key->cipher_id = MCU_CIPHER_BIP_CMAC_128;
+		sec_key->cipher_len = sizeof(*sec_key);
+		sec_key->key_id = key->keyidx;
+		sec_key->key_len = 16;
+		sec_key->need_resp = 0;
+		memcpy(sec_key->key, key->key, 16);
+		sec->n_cipher = 2;
+		return 0;
+	}
 
 	sec_key->mgmt_prot = 0;
 	sec_key->cipher_id = cipher;
@@ -3531,6 +3561,7 @@ mt7996_mcu_sta_key_tlv(struct mt76_dev *dev, struct mt76_wcid *wcid,
 }
 
 int mt7996_mcu_add_key(struct mt76_dev *dev, struct mt7996_vif_link *link,
+		       struct mt76_connac_sta_key_conf *sta_key_conf,
 		       struct ieee80211_key_conf *key, int mcu_cmd,
 		       struct mt76_wcid *wcid, enum set_key_cmd cmd)
 {
@@ -3542,7 +3573,7 @@ int mt7996_mcu_add_key(struct mt76_dev *dev, struct mt7996_vif_link *link,
 	if (IS_ERR(skb))
 		return PTR_ERR(skb);
 
-	ret = mt7996_mcu_sta_key_tlv(dev, wcid, skb, key, cmd);
+	ret = mt7996_mcu_sta_key_tlv(dev, wcid, skb, sta_key_conf, key, cmd);
 	if (ret) {
 		dev_kfree_skb(skb);
 		return ret;
