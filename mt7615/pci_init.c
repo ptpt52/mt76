@@ -120,9 +120,10 @@ void mt7615_unregister_device(struct mt7615_dev *dev)
 	if (mcu_running)
 		mt7615_mcu_exit(dev);
 
+	tasklet_disable(&dev->mt76.irq_tasklet);
+
 	mt7615_tx_token_put(dev);
 	mt7615_dma_cleanup(dev);
-	tasklet_disable(&dev->mt76.irq_tasklet);
 
 	mt76_free_device(&dev->mt76);
 }
