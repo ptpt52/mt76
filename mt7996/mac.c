@@ -1093,10 +1093,9 @@ int mt7996_tx_prepare_skb(struct mt76_dev *mdev, void *txwi_ptr,
 
 	pid = mt76_tx_status_skb_add(mdev, wcid, tx_info->skb);
 	memset(txwi_ptr, 0, MT_TXD_SIZE);
-	/* Transmit non qos data by 802.11 header and need to fill txd by host*/
-	if (!is_8023 || pid >= MT_PACKET_ID_FIRST)
-		mt7996_mac_write_txwi(dev, txwi_ptr, tx_info->skb, wcid, key,
-				      pid, qid, 0);
+	/* Always fill txwi for firmware to avoid incorrect header processing */
+	mt7996_mac_write_txwi(dev, txwi_ptr, tx_info->skb, wcid, key,
+			      pid, qid, 0);
 
 	/* MT7996 and MT7992 require driver to provide the MAC TXP for AddBA
 	 * req
@@ -1145,9 +1144,8 @@ int mt7996_tx_prepare_skb(struct mt76_dev *mdev, void *txwi_ptr,
 		txp->fw.nbuf = nbuf;
 
 		txp->fw.flags = cpu_to_le16(MT_CT_INFO_FROM_HOST);
-
-		if (!is_8023 || pid >= MT_PACKET_ID_FIRST)
-			txp->fw.flags |= cpu_to_le16(MT_CT_INFO_APPLY_TXD);
+		/* Always apply TXD to ensure correct firmware processing */
+		txp->fw.flags |= cpu_to_le16(MT_CT_INFO_APPLY_TXD);
 
 		if (!key)
 			txp->fw.flags |= cpu_to_le16(MT_CT_INFO_NONE_CIPHER_FRAME);
