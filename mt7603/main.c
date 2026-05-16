@@ -470,15 +470,6 @@ mt7603_sta_ps(struct mt76_dev *mdev, struct ieee80211_sta *sta, bool ps)
 }
 
 static void
-mt7603_ps_set_more_data(struct sk_buff *skb)
-{
-	struct ieee80211_hdr *hdr;
-
-	hdr = (struct ieee80211_hdr *)&skb->data[MT_TXD_SIZE];
-	hdr->frame_control |= cpu_to_le16(IEEE80211_FCTL_MOREDATA);
-}
-
-static void
 mt7603_release_buffered_frames(struct ieee80211_hw *hw,
 			       struct ieee80211_sta *sta,
 			       u16 tids, int nframes,
@@ -488,7 +479,7 @@ mt7603_release_buffered_frames(struct ieee80211_hw *hw,
 	struct mt7603_dev *dev = hw->priv;
 	struct mt7603_sta *msta = (struct mt7603_sta *)sta->drv_priv;
 	struct sk_buff_head list;
-	struct sk_buff *skb, *tmp;
+	struct sk_buff *skb, *tmp, *last;
 
 	__skb_queue_head_init(&list);
 
@@ -504,14 +495,54 @@ mt7603_release_buffered_frames(struct ieee80211_hw *hw,
 
 		skb_set_queue_mapping(skb, MT_TXQ_PSD);
 		__skb_unlink(skb, &msta->psq);
-		mt7603_ps_set_more_data(skb);
 		__skb_queue_tail(&list, skb);
 		nframes--;
 	}
 	spin_unlock_bh(&dev->ps_lock);
 
-	if (!skb_queue_empty(&list))
-		ieee80211_sta_eosp(sta);
+	/*
+	 * Walk the list once to tag the released frames:
+	 *
+	 *  - MORE_DATA=1 on every frame except the real last (the
+	 *    last frame of the service period must clear MORE_DATA
+	 *    so the STA knows it can sleep again);
+	 *  - IEEE80211_TX_STATUS_EOSP | IEEE80211_TX_CTL_REQ_TX_STATUS
+	 *    on the real last frame so that mac80211 invokes
+	 *    ieee80211_sta_eosp() via the tx-status callback after
+	 *    the frame has actually been transmitted;
+	 *  - IEEE80211_TX_CTRL_PS_RESPONSE so the TX layer treats
+	 *    the frame as a PS-release;
+	 *  - mt76_tx_cb prepared with msta->wcid.idx so that
+	 *    mt7603_tx_complete_skb() routes the DMA completion
+	 *    through mt76_tx_complete_skb() (the raw-submit path
+	 *    would otherwise free the skb without running the
+	 *    mac80211 callback).
+	 *
+	 * The "real last" frame is the tail of our list only when
+	 * we satisfied the whole request from psq (nframes == 0
+	 * after the drain). Otherwise mt76_release_buffered_frames()
+	 * below releases the remaining frames and marks its tail.
+	 */
+	last = (nframes == 0) ? skb_peek_tail(&list) : NULL;
+	skb_queue_walk(&list, skb) {
+		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+		struct mt76_tx_cb *cb = mt76_tx_skb_cb(skb);
+		struct ieee80211_hdr *hdr;
+
+		info->control.flags |= IEEE80211_TX_CTRL_PS_RESPONSE;
+
+		if (skb == last) {
+			info->flags |= IEEE80211_TX_STATUS_EOSP |
+				       IEEE80211_TX_CTL_REQ_TX_STATUS;
+		} else {
+			hdr = (struct ieee80211_hdr *)(skb->data + MT_TXD_SIZE);
+			hdr->frame_control |=
+				cpu_to_le16(IEEE80211_FCTL_MOREDATA);
+		}
+
+		memset(cb, 0, sizeof(*cb));
+		cb->wcid = msta->wcid.idx;
+	}
 
 	mt7603_ps_tx_list(dev, &list);
 

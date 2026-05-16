@@ -1293,8 +1293,23 @@ void mt7603_tx_complete_skb(struct mt76_dev *mdev, struct mt76_queue_entry *e)
 {
 	struct mt7603_dev *dev = container_of(mdev, struct mt7603_dev, mt76);
 	struct sk_buff *skb = e->skb;
+	struct mt76_tx_cb *cb;
 
 	if (!e->txwi) {
+		/* Raw-submitted frame. PS-release frames installed by
+		 * mt7603_release_buffered_frames() populate cb->wcid so
+		 * we route the DMA completion through the mac80211
+		 * tx-status callback -- required for IEEE80211_TX_STATUS_EOSP
+		 * to drive ieee80211_sta_eosp(). Other raw users (MCU
+		 * commands) leave the cb area zero and continue to be
+		 * freed directly here.
+		 */
+		cb = mt76_tx_skb_cb(skb);
+		if (cb->wcid) {
+			dev->tx_hang_check = 0;
+			mt76_tx_complete_skb(mdev, cb->wcid, skb);
+			return;
+		}
 		dev_kfree_skb_any(skb);
 		return;
 	}
