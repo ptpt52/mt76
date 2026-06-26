@@ -568,6 +568,7 @@ mt76_txq_schedule_list(struct mt76_phy *phy, enum mt76_txq_id qid)
 
 	while (1) {
 		int n_frames = 0;
+		struct mt76_phy *wcid_phy;
 
 		txq = ieee80211_next_txq(phy->hw, qid);
 		if (!txq)
@@ -578,7 +579,11 @@ mt76_txq_schedule_list(struct mt76_phy *phy, enum mt76_txq_id qid)
 		if (!wcid)
 			continue;
 
-		phy = mt76_dev_phy(dev, wcid->phy_idx);
+		wcid_phy = mt76_dev_phy(dev, wcid->phy_idx);
+		if (phy->hw != wcid_phy->hw)
+			continue;
+
+		phy = wcid_phy;
 		if (test_bit(MT76_RESET, &phy->state) || phy->offchannel)
 			continue;
 
