@@ -271,6 +271,10 @@ void mt7603_dma_cleanup(struct mt7603_dev *dev)
 		   MT_WPDMA_GLO_CFG_TX_DMA_EN |
 		   MT_WPDMA_GLO_CFG_RX_DMA_EN |
 		   MT_WPDMA_GLO_CFG_TX_WRITEBACK_DONE);
+	if (!mt76_poll(dev, MT_WPDMA_GLO_CFG,
+		       MT_WPDMA_GLO_CFG_TX_DMA_BUSY | MT_WPDMA_GLO_CFG_RX_DMA_BUSY,
+		       0, 1000))
+		mt7603_pse_client_reset(dev);
 
 	mt76_dma_cleanup(&dev->mt76);
 }

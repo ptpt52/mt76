@@ -4,6 +4,7 @@
 #include "mt7603.h"
 #include "mac.h"
 #include "eeprom.h"
+#include "mcu.h"
 
 const struct mt76_driver_ops mt7603_drv_ops = {
 	.txwi_size = MT_TXD_SIZE,
@@ -275,6 +276,40 @@ mt7603_mac_init(struct mt7603_dev *dev)
 			       (i + 1) * (20 + 4096));
 }
 
+/* The MT7592N on the ZTE ZXHN H267A (MT751020) will not answer any MCU
+ * command unless the first one issued after the firmware starts is already
+ * queued by the time mt7603_dma_sched_init() runs.
+ *
+ * Until the scheduler is programmed the PSE hands out zero pages, so a queued
+ * descriptor simply stalls (TX_DMA_BUSY latches, DMA_IDX does not move);
+ * mt7603_dma_sched_init() then releases it and the MCU replies normally from
+ * that point on. Issue the first command the other way round -- scheduler
+ * first, command second, which is what the unpatched order does -- and the
+ * chip fetches the descriptor and silently never responds, or, on a cold
+ * probe, hangs the SoC bus hard enough to take the whole system with it.
+ *
+ * So send one command non-blocking beforehand, purely so that something is
+ * pending across sched_init. It is deliberately the same EFUSE_BUFFER_MODE
+ * command that mt7603_mcu_set_eeprom() issues immediately afterwards, with
+ * the same real payload the vendor uploads (never a zeroed message).
+ *
+ * This is an empirical ordering fix established on hardware by bisecting the
+ * order of the two calls; the underlying mechanism is not understood.
+ *
+ * Scoped to non-mt7628 hardware: the bug and its fix are both about the
+ * discrete PCIe MT7603-family chip's own MCU/DMA boot sequence, which the
+ * SoC-integrated mt7628 variant doesn't go through the same way, so there's
+ * no reason to add this extra round-trip to init on hardware that hasn't
+ * shown the bug.
+ */
+static int mt7603_mcu_prime(struct mt7603_dev *dev)
+{
+	if (is_mt7628(dev))
+		return 0;
+
+	return mt7603_mcu_prime_eeprom(dev);
+}
+
 static int
 mt7603_init_hardware(struct mt7603_dev *dev)
 {
@@ -305,8 +340,15 @@ mt7603_init_hardware(struct mt7603_dev *dev)
 	if (ret)
 		return ret;
 
+	ret = mt7603_mcu_prime(dev);
+	if (ret)
+		return ret;
+
 	mt7603_dma_sched_init(dev);
-	mt7603_mcu_set_eeprom(dev);
+	ret = mt7603_mcu_set_eeprom(dev);
+	if (ret)
+		return ret;
+
 	mt7603_phy_init(dev);
 	mt7603_mac_init(dev);
 
@@ -560,6 +602,28 @@ int mt7603_register_device(struct mt7603_dev *dev)
 	mt7603_init_txpower(dev, &dev->mphy.sband_2g.sband);
 
 	return 0;
+}
+
+void mt7603_cleanup_failed_probe(struct mt7603_dev *dev, int irq)
+{
+	int i;
+
+	/* INITIALIZED is set only after both RX and TX NAPI are enabled. */
+	if (test_and_clear_bit(MT76_STATE_INITIALIZED, &dev->mphy.state)) {
+		mt7603_irq_disable(dev, ~0);
+		synchronize_irq(irq);
+		tasklet_kill(&dev->mt76.pre_tbtt_tasklet);
+		mt76_for_each_q_rx(&dev->mt76, i)
+			napi_disable(&dev->mt76.napi[i]);
+
+		mt7603_mac_stop(dev);
+		mt7603_dma_cleanup(dev);
+		skb_queue_purge(&dev->mt76.mcu.res_q);
+	}
+
+	/* A poll already in progress may have re-enabled its interrupt. */
+	mt7603_irq_disable(dev, ~0);
+	devm_free_irq(dev->mt76.dev, irq, dev);
 }
 
 void mt7603_unregister_device(struct mt7603_dev *dev)

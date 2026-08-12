@@ -43,8 +43,10 @@ mt76_wmac_probe(struct platform_device *pdev)
 		goto error;
 
 	ret = mt7603_register_device(dev);
-	if (ret)
+	if (ret) {
+		mt7603_cleanup_failed_probe(dev, irq);
 		goto error;
+	}
 
 	return 0;
 error:

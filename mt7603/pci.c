@@ -52,8 +52,10 @@ mt76pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto error;
 
 	ret = mt7603_register_device(dev);
-	if (ret)
+	if (ret) {
+		mt7603_cleanup_failed_probe(dev, pdev->irq);
 		goto error;
+	}
 
 	return 0;
 error:

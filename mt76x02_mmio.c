@@ -261,7 +261,10 @@ irqreturn_t mt76x02_irq_handler(int irq, void *dev_instance)
 	u32 intr, mask;
 
 	intr = mt76_rr(dev, MT_INT_SOURCE_CSR);
-	intr &= dev->mt76.mmio.irqmask;
+	/* Clear the unused TX delay source on INTx. Masked NAPI sources
+	 * must remain pending until their poll completes.
+	 */
+	intr &= READ_ONCE(dev->mt76.mmio.irqmask) | MT_INT_TXDELAYINT;
 	mt76_wr(dev, MT_INT_SOURCE_CSR, intr);
 
 	if (!test_bit(MT76_STATE_INITIALIZED, &dev->mphy.state))
