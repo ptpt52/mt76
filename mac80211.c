@@ -1742,9 +1742,12 @@ void mt76_wcid_cleanup(struct mt76_dev *dev, struct mt76_wcid *wcid)
 
 	mt76_tx_status_lock(dev, &list);
 	mt76_tx_status_skb_get(dev, wcid, -1, &list);
-	mt76_tx_status_unlock(dev, &list);
-
+	/*
+	 * must run under status_lock to avoid racing mt76_tx_status_skb_add()
+	 * in tx.c, which allocates pktid entries via idr_alloc() concurrently.
+	 */
 	idr_destroy(&wcid->pktid);
+	mt76_tx_status_unlock(dev, &list);
 
 	/* Remove from sta_poll_list to prevent list corruption after reset.
 	 * Without this, mt76_reset_device() reinitializes sta_poll_list but
