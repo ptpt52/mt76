@@ -3465,12 +3465,38 @@ out:
 				     MCU_WMWA_UNI_CMD(BSS_INFO_UPDATE), true);
 }
 
+#define OFFLOAD_TX_MODE_SU	BIT(0)
+#define OFFLOAD_TX_MODE_MU	BIT(1)
+
+static int
+mt7996_mcu_beacon_inband_discov_disable(struct mt7996_dev *dev,
+				       struct mt7996_vif_link *link,
+				       u32 changed)
+{
+	struct bss_inband_discovery_tlv *discov;
+	struct sk_buff *rskb;
+	struct tlv *tlv;
+
+	rskb = __mt7996_mcu_alloc_bss_req(&dev->mt76, &link->mt76,
+					  sizeof(*discov) + sizeof(*tlv));
+	if (IS_ERR(rskb))
+		return PTR_ERR(rskb);
+
+	tlv = mt7996_mcu_add_uni_tlv(rskb, UNI_BSS_INFO_OFFLOAD, sizeof(*discov));
+	discov = (struct bss_inband_discovery_tlv *)tlv;
+	discov->tx_mode = OFFLOAD_TX_MODE_SU;
+	/* 0: UNSOL PROBE RESP, 1: FILS DISCOV */
+	discov->tx_type = (changed & BSS_CHANGED_FILS_DISCOVERY) ? 1 : 0;
+	discov->wcid = cpu_to_le16(MT7996_WTBL_RESERVED);
+
+	return mt76_mcu_skb_send_msg(&dev->mt76, rskb,
+				     MCU_WMWA_UNI_CMD(BSS_INFO_UPDATE), true);
+}
+
 int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 				    struct ieee80211_bss_conf *link_conf,
 				    struct mt7996_vif_link *link, u32 changed)
 {
-#define OFFLOAD_TX_MODE_SU	BIT(0)
-#define OFFLOAD_TX_MODE_MU	BIT(1)
 	struct mt76_phy *mphy = mt76_vif_link_phy(&link->mt76);
 	struct ieee80211_vif *vif = link_conf->vif;
 	struct ieee80211_hw *hw = mt76_hw(dev);
@@ -3481,7 +3507,7 @@ int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 	struct cfg80211_chan_def *chandef;
 	enum nl80211_band band;
 	struct tlv *tlv;
-	u8 *buf, interval;
+	u8 *buf, interval = 0;
 	int len;
 
 	if (!mphy)
@@ -3493,24 +3519,27 @@ int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 	if (link_conf->nontransmitted)
 		return 0;
 
-	rskb = __mt7996_mcu_alloc_bss_req(&dev->mt76, &link->mt76,
-					  MT7996_MAX_BSS_OFFLOAD_SIZE);
-	if (IS_ERR(rskb))
-		return PTR_ERR(rskb);
-
-	if (changed & BSS_CHANGED_FILS_DISCOVERY &&
-	    link_conf->fils_discovery.max_interval) {
+	if (changed & BSS_CHANGED_FILS_DISCOVERY) {
 		interval = link_conf->fils_discovery.max_interval;
-		skb = ieee80211_get_fils_discovery_tmpl(hw, vif);
-	} else if (changed & BSS_CHANGED_UNSOL_BCAST_PROBE_RESP &&
-		   link_conf->unsol_bcast_probe_resp_interval) {
+		if (interval)
+			skb = ieee80211_get_fils_discovery_tmpl(hw, vif);
+	} else if (changed & BSS_CHANGED_UNSOL_BCAST_PROBE_RESP) {
 		interval = link_conf->unsol_bcast_probe_resp_interval;
-		skb = ieee80211_get_unsol_bcast_probe_resp_tmpl(hw, vif);
+		if (interval)
+			skb = ieee80211_get_unsol_bcast_probe_resp_tmpl(hw, vif);
 	}
 
-	if (!skb) {
-		dev_kfree_skb(rskb);
+	if (!interval)
+		return mt7996_mcu_beacon_inband_discov_disable(dev, link, changed);
+
+	if (!skb)
 		return -EINVAL;
+
+	rskb = __mt7996_mcu_alloc_bss_req(&dev->mt76, &link->mt76,
+					  MT7996_MAX_BSS_OFFLOAD_SIZE);
+	if (IS_ERR(rskb)) {
+		dev_kfree_skb(skb);
+		return PTR_ERR(rskb);
 	}
 
 	if (skb->len > MT7996_MAX_BEACON_SIZE) {
