@@ -252,15 +252,27 @@ mt7996_set_hw_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	else if (idx == *wcid_keyidx)
 		*wcid_keyidx = -1;
 
+	/* Do not reuse a removed or replaced data key in a BIP batch. */
+	if (key->keyidx < 4 &&
+	    (cmd == SET_KEY || key->keyidx == msta_link->bip.keyidx))
+		msta_link->bip_valid = false;
+
 	/* only do remove key for BIGTK */
 	if (cmd != SET_KEY && !is_bigtk)
 		return 0;
 
 	mt76_wcid_key_setup(&dev->mt76, &msta_link->wcid, key);
 
-	err = mt7996_mcu_add_key(&dev->mt76, link, &msta_link->bip, key,
+	err = mt7996_mcu_add_key(&dev->mt76, link,
+				 msta_link->bip_valid ? &msta_link->bip : NULL, key,
 				 MCU_WMWA_UNI_CMD(STA_REC_UPDATE),
 				 &msta_link->wcid, cmd);
+
+	if (!err && cmd == SET_KEY && key->cipher == WLAN_CIPHER_SUITE_CCMP) {
+		memcpy(msta_link->bip.key, key->key, key->keylen);
+		msta_link->bip.keyidx = key->keyidx;
+		msta_link->bip_valid = true;
+	}
 
 	/* remove and add beacon in order to enable beacon protection */
 	if (cmd == SET_KEY && is_bigtk && link_conf->enable_beacon) {
@@ -355,6 +367,7 @@ int mt7996_vif_link_add(struct mt76_phy *mphy, struct ieee80211_vif *vif,
 	msta_link->wcid.link_valid = ieee80211_vif_is_mld(vif);
 	msta_link->wcid.tx_info |= MT_WCID_TX_INFO_SET;
 	mt76_wcid_init(&msta_link->wcid, band_idx);
+	msta_link->bip_valid = false;
 
 	mt7996_mac_wtbl_update(dev, idx,
 			       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
@@ -1188,6 +1201,7 @@ mt7996_mac_sta_init_link(struct mt7996_dev *dev,
 
 	rcu_assign_pointer(dev->mt76.wcid[idx], &msta_link->wcid);
 	mt76_wcid_init(&msta_link->wcid, phy->mt76->band_idx);
+	msta_link->bip_valid = false;
 
 	return 0;
 }

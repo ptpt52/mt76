@@ -1481,25 +1481,23 @@ static inline void *mt76_skb_get_hdr(struct sk_buff *skb)
 	return data;
 }
 
-static inline void mt76_insert_hdr_pad(struct sk_buff *skb)
+static inline int mt76_insert_hdr_pad(struct sk_buff *skb)
 {
 	int len = ieee80211_get_hdrlen_from_skb(skb);
 
 	if (len % 4 == 0)
-		return;
+		return 0;
 
-	if (unlikely(skb_headroom(skb) < 2)) {
-		if (pskb_expand_head(skb, 2, 0, GFP_ATOMIC)) {
-			pr_err("mt76: failed to expand headroom for padding\n");
-			return;
-		}
-	}
+	if (skb_cow_head(skb, 2))
+		return -ENOMEM;
 
 	skb_push(skb, 2);
 	memmove(skb->data, skb->data + 2, len);
 
 	skb->data[len] = 0;
 	skb->data[len + 1] = 0;
+
+	return 0;
 }
 
 static inline bool mt76_is_skb_pktid(u8 pktid)

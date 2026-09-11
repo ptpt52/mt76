@@ -3150,12 +3150,10 @@ mt7996_mcu_sta_key_tlv(struct mt76_dev *dev, struct mt76_wcid *wcid,
 	if (cipher == MCU_CIPHER_NONE)
 		return -EOPNOTSUPP;
 
-	if (cipher == MCU_CIPHER_BIP_CMAC_128) {
-		/* BIP batch mode: install CCMP + BIP as two keys, matching
-		 * the approach used by mt76_connac_mcu_sta_key_tlv() for
-		 * mt7915. This is required for FT-SAE (802.11r with WPA3)
-		 * to work correctly, as the management frame protection
-		 * keys must be installed alongside the pairwise key.
+	if (cipher == MCU_CIPHER_BIP_CMAC_128 && sta_key_conf &&
+	    (key->keyidx == 4 || key->keyidx == 5)) {
+		/* Batch IGTK with an installed CCMP key for FT-SAE.
+		 * BIGTK must use the beacon protection mapping below.
 		 */
 		sec_key->mgmt_prot = 0;
 		sec_key->cipher_id = MCU_CIPHER_AES_CCMP;
@@ -3190,12 +3188,6 @@ mt7996_mcu_sta_key_tlv(struct mt76_dev *dev, struct mt76_wcid *wcid,
 		memcpy(sec_key->key + 16, key->key + 24, 8);
 		memcpy(sec_key->key + 24, key->key + 16, 8);
 		return 0;
-	}
-
-	/* store key_conf for BIP batch update */
-	if (cipher == MCU_CIPHER_AES_CCMP) {
-		memcpy(sta_key_conf->key, key->key, key->keylen);
-		sta_key_conf->keyidx = key->keyidx;
 	}
 
 	if (sec_key->key_id != 6 && sec_key->key_id != 7)
@@ -3493,7 +3485,7 @@ mt7996_mcu_beacon_inband_discov_disable(struct mt7996_dev *dev,
 				     MCU_WMWA_UNI_CMD(BSS_INFO_UPDATE), true);
 }
 
-int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
+static int __mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 				    struct ieee80211_bss_conf *link_conf,
 				    struct mt7996_vif_link *link, u32 changed)
 {
@@ -3579,6 +3571,25 @@ int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 
 	return mt76_mcu_skb_send_msg(&dev->mt76, rskb,
 				     MCU_WMWA_UNI_CMD(BSS_INFO_UPDATE), true);
+}
+
+int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
+				 struct ieee80211_bss_conf *link_conf,
+				 struct mt7996_vif_link *link, u32 changed)
+{
+	int ret = 0, err;
+
+	if (changed & BSS_CHANGED_FILS_DISCOVERY)
+		ret = __mt7996_mcu_beacon_inband_discov(dev, link_conf, link,
+						 BSS_CHANGED_FILS_DISCOVERY);
+	if (changed & BSS_CHANGED_UNSOL_BCAST_PROBE_RESP) {
+		err = __mt7996_mcu_beacon_inband_discov(dev, link_conf, link,
+					 BSS_CHANGED_UNSOL_BCAST_PROBE_RESP);
+		if (!ret)
+			ret = err;
+	}
+
+	return ret;
 }
 
 static int mt7996_driver_own(struct mt7996_dev *dev, u8 band)

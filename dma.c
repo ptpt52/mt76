@@ -519,10 +519,10 @@ mt76_dma_get_buf(struct mt76_dev *dev, struct mt76_queue *q, int idx,
 		goto done;
 
 	ctrl = le32_to_cpu(READ_ONCE(desc->ctrl));
-	if (len) {
+	if (len)
 		*len = FIELD_GET(MT_DMA_CTL_SD_LEN0, ctrl);
+	if (more)
 		*more = !(ctrl & MT_DMA_CTL_LAST_SEC0);
-	}
 
 	desc_info = le32_to_cpu(desc->info);
 	if (info)
@@ -535,16 +535,20 @@ mt76_dma_get_buf(struct mt76_dev *dev, struct mt76_queue *q, int idx,
 		u32 token = FIELD_GET(MT_DMA_CTL_TOKEN, buf1);
 		struct mt76_txwi_cache *t;
 
-		if (*more) {
-			u32 id, find = 0;
+		if (!(ctrl & MT_DMA_CTL_LAST_SEC0)) {
+			dma_addr_t addr = le32_to_cpu(READ_ONCE(desc->buf0));
+			int id;
+
+#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+			addr |= (dma_addr_t)FIELD_GET(MT_DMA_CTL_SDP0_H, buf1) << 32;
+#endif
 			spin_lock_bh(&dev->rx_token_lock);
 
 			idr_for_each_entry(&dev->rx_token, t, id) {
-				if (t->dma_addr == le32_to_cpu(desc->buf0)) {
-					find = 1;
+				if (t->dma_addr == addr) {
 					token = id;
 
-					/* Write correct id back to DMA*/
+					/* Write the correct ID back to the descriptor. */
 					u32p_replace_bits(&buf1, id,
 							  MT_DMA_CTL_TOKEN);
 					WRITE_ONCE(desc->buf1, cpu_to_le32(buf1));
@@ -552,12 +556,13 @@ mt76_dma_get_buf(struct mt76_dev *dev, struct mt76_queue *q, int idx,
 				}
 			}
 
+			if (t)
+				t = idr_remove(&dev->rx_token, token);
 			spin_unlock_bh(&dev->rx_token_lock);
-			if (!find)
-				return NULL;
+		} else {
+			t = mt76_rx_token_release(dev, token);
 		}
 
-		t = mt76_rx_token_release(dev, token);
 		if (!t)
 			return NULL;
 
@@ -721,8 +726,12 @@ mt76_dma_tx_queue_skb(struct mt76_phy *phy, struct mt76_queue *q,
 	txwi = mt76_get_txwi_ptr(dev, t);
 
 	skb->prev = skb->next = NULL;
-	if (dev->drv->drv_flags & MT_DRV_TX_ALIGNED4_SKBS)
-		mt76_insert_hdr_pad(skb);
+	if (dev->drv->drv_flags & MT_DRV_TX_ALIGNED4_SKBS) {
+		ret = mt76_insert_hdr_pad(skb);
+		if (ret)
+			goto free;
+	}
+	ret = -ENOMEM;
 
 	len = skb_headlen(skb);
 	addr = dma_map_single(dev->dma_dev, skb->data, len, DMA_TO_DEVICE);

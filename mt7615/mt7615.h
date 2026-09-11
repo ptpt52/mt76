@@ -254,6 +254,8 @@ struct mt7615_dev {
 	const struct mt7615_mcu_ops *mcu_ops;
 	struct regmap *infracfg;
 	const u32 *reg_map;
+	int irq;
+	bool irq_stopped;
 
 	struct work_struct mcu_work;
 

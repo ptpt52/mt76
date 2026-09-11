@@ -152,7 +152,11 @@ int mt7615_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 		skb_pull(skb, sizeof(*rxd) - 4);
 		ret = *skb->data;
 	} else if (cmd == MCU_EXT_CMD(THERMAL_CTRL)) {
-		skb_pull(skb, sizeof(*rxd) + is_mt7663(mdev) ? 4 : 0);
+		unsigned int offset = sizeof(*rxd) + (is_mt7663(mdev) ? 4 : 0);
+
+		if (skb->len < offset + sizeof(__le32))
+			return -EINVAL;
+		skb_pull(skb, offset);
 		ret = le32_to_cpu(*(__le32 *)skb->data);
 	} else if (cmd == MCU_EXT_QUERY(RF_REG_ACCESS)) {
 		skb_pull(skb, sizeof(*rxd));
@@ -384,6 +388,8 @@ mt7615_mcu_rx_radar_detected(struct mt7615_dev *dev, struct sk_buff *skb)
 	if (is_mt7663(&dev->mt76)) {
 		struct mt7663_mcu_rdd_report *r;
 
+		if (skb->len < offsetof(struct mt7663_mcu_rdd_report, long_pulse))
+			return;
 		r = (struct mt7663_mcu_rdd_report *)skb->data;
 
 		if (!dev->radar_pattern.n_pulses && !r->long_detected &&
@@ -395,6 +401,8 @@ mt7615_mcu_rx_radar_detected(struct mt7615_dev *dev, struct sk_buff *skb)
 	} else {
 		struct mt7615_mcu_rdd_report *r;
 
+		if (skb->len < offsetof(struct mt7615_mcu_rdd_report, long_pulse))
+			return;
 		r = (struct mt7615_mcu_rdd_report *)skb->data;
 
 		if (!dev->radar_pattern.n_pulses && !r->long_detected &&
@@ -446,7 +454,8 @@ static void mt7663_beacon_loss_iter(void *priv, u8 *mac,
 {
 	struct mt7663_beacon_loss_event *event = priv;
 
-	if (memcmp(mac, event->bss_idx, 6) != 0)
+	if (vif->type != NL80211_IFTYPE_STATION ||
+	    !ether_addr_equal(mac, event->bss_idx))
 		return;
 
 	//handle ENUM_BCN_LOSS_AP_ERROR only
@@ -472,7 +481,11 @@ mt7615_mcu_beacon_loss_event(struct mt7615_dev *dev, struct sk_buff *skb)
 	struct mt76_connac_beacon_loss_event *event;
 	struct mt76_phy *mphy;
 	u8 band_idx = 0; /* DBDC support */
+	unsigned int event_len = is_mt7663(&dev->mt76) ?
+		 sizeof(struct mt7663_beacon_loss_event) : sizeof(*event);
 
+	if (skb->len < sizeof(struct mt7615_mcu_rxd) + event_len)
+		return;
 	skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
 	event = (struct mt76_connac_beacon_loss_event *)skb->data;
 	if (band_idx && dev->mt76.phys[MT_BAND1])
@@ -511,9 +524,10 @@ mt7615_mcu_rx_ext_event(struct mt7615_dev *dev, struct sk_buff *skb)
 		/* nothing to do */
 		break;
 	case MCU_EXT_EVENT_ASSERT_DUMP:
-		skb_pull(skb, sizeof(struct mt7615_mcu_rxd));
-		skb->data[skb->len] = 0;
-		dev_info(dev->mt76.dev, "MCU_EXT_EVENT_ASSERT_DUMP:%s\n", skb->data);
+		if (!skb_pull(skb, sizeof(struct mt7615_mcu_rxd)))
+			break;
+		dev_info(dev->mt76.dev, "MCU_EXT_EVENT_ASSERT_DUMP:%.*s\n",
+			 (int)skb->len, skb->data);
 		break;
 	default:
 		dev_info(dev->mt76.dev, "get ext unhandle eid=%d ext_eid=%d seq=%d\n", rxd->eid, rxd->ext_eid, rxd->seq);
@@ -725,11 +739,6 @@ mt7615_mcu_add_dev(struct mt7615_phy *phy, struct ieee80211_vif *vif,
 }
 
 static int
-__mt7615_mcu_add_sta(struct mt76_phy *phy, struct ieee80211_vif *vif,
-		     struct ieee80211_sta *sta, bool enable, int cmd,
-		     bool offload_fw);
-
-static int
 mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 			      struct ieee80211_hw *hw,
 			      struct ieee80211_vif *vif, bool enable)
@@ -791,11 +800,6 @@ mt7615_mcu_add_beacon_offload(struct mt7615_dev *dev,
 	}
 	dev_kfree_skb(skb);
 
-	if (is_mt7663(&dev->mt76)) {
-		//hack to clear all pending packets
-		__mt7615_mcu_add_sta(dev->phy.mt76, vif, NULL, false, MCU_EXT_CMD(STA_REC_UPDATE), false);
-		__mt7615_mcu_add_sta(dev->phy.mt76, vif, NULL, true, MCU_EXT_CMD(STA_REC_UPDATE), false);
-	}
 out:
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(BCN_OFFLOAD), &req,
 				 sizeof(req), true);
@@ -1069,12 +1073,6 @@ static int
 mt7615_mcu_add_sta(struct mt7615_phy *phy, struct ieee80211_vif *vif,
 		   struct ieee80211_sta *sta, bool enable)
 {
-	if (is_mt7663(&phy->dev->mt76) && !enable) {
-		//hack to clear all pending packets
-		__mt7615_mcu_add_sta(phy->mt76, vif, sta, enable, MCU_EXT_CMD(STA_REC_UPDATE), false);
-		__mt7615_mcu_add_sta(phy->mt76, vif, NULL, false, MCU_EXT_CMD(STA_REC_UPDATE), false);
-		__mt7615_mcu_add_sta(phy->mt76, vif, NULL, true, MCU_EXT_CMD(STA_REC_UPDATE), false);
-	}
 	return __mt7615_mcu_add_sta(phy->mt76, vif, sta, enable,
 				    MCU_EXT_CMD(STA_REC_UPDATE), false);
 }

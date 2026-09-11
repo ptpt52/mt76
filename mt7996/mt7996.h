@@ -301,6 +301,7 @@ struct mt7996_sta_link {
 	unsigned long changed;
 
 	struct mt76_connac_sta_key_conf bip;
+	bool bip_valid;
 
 	struct {
 		u8 flowid_mask;

@@ -354,7 +354,8 @@ mt7603_bss_info_changed(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		}
 
 		for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
-			mt7603_conf_edca_params(hw, ac, &mvif->tx_params[ac]);
+			if (dev->tx_params_valid & BIT(ac))
+				mt7603_conf_edca_params(hw, ac, &dev->tx_params[ac]);
 		}
 	}
 
@@ -635,10 +636,10 @@ mt7603_conf_tx(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	       const struct ieee80211_tx_queue_params *params)
 {
 	struct mt7603_dev *dev = hw->priv;
-	struct mt7603_vif *mvif = (struct mt7603_vif*)vif->drv_priv;
-	mvif->tx_params[queue] = *params;
 
 	mutex_lock(&dev->mt76.mutex);
+	dev->tx_params[queue] = *params;
+	dev->tx_params_valid |= BIT(queue);
 	mt7603_conf_edca_params(hw, queue, params);
 	mutex_unlock(&dev->mt76.mutex);
 

@@ -112,18 +112,31 @@ int mt7615_register_device(struct mt7615_dev *dev)
 void mt7615_unregister_device(struct mt7615_dev *dev)
 {
 	bool mcu_running;
+	int i;
 
 	mcu_running = mt7615_wait_for_mcu_init(dev);
+
+	set_bit(MT76_REMOVED, &dev->mphy.state);
+	cancel_work_sync(&dev->reset_work);
 
 	mt7615_unregister_ext_phy(dev);
 	mt76_unregister_device(&dev->mt76);
 	if (mcu_running)
 		mt7615_mcu_exit(dev);
 
-	tasklet_disable(&dev->mt76.irq_tasklet);
+	WRITE_ONCE(dev->irq_stopped, true);
+	clear_bit(MT76_STATE_INITIALIZED, &dev->mphy.state);
+	mt76_set_irq_mask(&dev->mt76, MT_INT_MASK_CSR, ~0, 0);
+	devm_free_irq(dev->mt76.dev, dev->irq, dev);
+	tasklet_kill(&dev->mt76.irq_tasklet);
+	mt76_worker_disable(&dev->mt76.tx_worker);
+	mt76_for_each_q_rx(&dev->mt76, i)
+		napi_disable(&dev->mt76.napi[i]);
 
 	mt7615_tx_token_put(dev);
 	mt7615_dma_cleanup(dev);
+	/* NAPI completion can reschedule the tasklet after the first kill. */
+	tasklet_kill(&dev->mt76.irq_tasklet);
 
 	mt76_free_device(&dev->mt76);
 }
