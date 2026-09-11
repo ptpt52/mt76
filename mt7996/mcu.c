@@ -3836,7 +3836,7 @@ mt7996_mcu_beacon_inband_discov_disable(struct mt7996_dev *dev,
 				     MCU_WMWA_UNI_CMD(BSS_INFO_UPDATE), true);
 }
 
-int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
+static int __mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 				    struct ieee80211_bss_conf *link_conf,
 				    struct mt7996_vif_link *link, u32 changed)
 {
@@ -3922,6 +3922,25 @@ int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
 
 	return mt76_mcu_skb_send_msg(&dev->mt76, rskb,
 				     MCU_WMWA_UNI_CMD(BSS_INFO_UPDATE), true);
+}
+
+int mt7996_mcu_beacon_inband_discov(struct mt7996_dev *dev,
+				 struct ieee80211_bss_conf *link_conf,
+				 struct mt7996_vif_link *link, u32 changed)
+{
+	int ret = 0, err;
+
+	if (changed & BSS_CHANGED_FILS_DISCOVERY)
+		ret = __mt7996_mcu_beacon_inband_discov(dev, link_conf, link,
+						 BSS_CHANGED_FILS_DISCOVERY);
+	if (changed & BSS_CHANGED_UNSOL_BCAST_PROBE_RESP) {
+		err = __mt7996_mcu_beacon_inband_discov(dev, link_conf, link,
+					 BSS_CHANGED_UNSOL_BCAST_PROBE_RESP);
+		if (!ret)
+			ret = err;
+	}
+
+	return ret;
 }
 
 static int mt7996_driver_own(struct mt7996_dev *dev, u8 band)

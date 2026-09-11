@@ -147,6 +147,7 @@ mt76_tx_status_skb_add(struct mt76_dev *dev, struct mt76_wcid *wcid,
 
 	spin_lock_bh(&dev->status_lock);
 
+	/* Cleanup may have unpublished this WCID while we waited for the lock. */
 	if (rcu_access_pointer(dev->wcid[wcid->idx]) != wcid) {
 		pid = MT_PACKET_ID_NO_ACK;
 		goto out;

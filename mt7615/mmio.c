@@ -89,6 +89,9 @@ static void mt7615_irq_tasklet(struct tasklet_struct *t)
 	u32 intr, mask = 0, tx_mcu_mask = mt7615_tx_mcu_int_mask(dev);
 	u32 mcu_int;
 
+	if (READ_ONCE(dev->irq_stopped))
+		return;
+
 	mt76_wr(dev, MT_INT_MASK_CSR, 0);
 
 	intr = mt76_rr(dev, MT_INT_SOURCE_CSR);
@@ -203,6 +206,7 @@ int mt7615_mmio_probe(struct device *pdev, void __iomem *mem_base,
 	tasklet_setup(&mdev->irq_tasklet, mt7615_irq_tasklet);
 
 	dev->reg_map = map;
+	dev->irq = irq;
 	dev->ops = ops;
 	mdev->rev = (mt76_rr(dev, MT_HW_CHIPID) << 16) |
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
