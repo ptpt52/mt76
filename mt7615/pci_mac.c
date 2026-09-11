@@ -207,6 +207,9 @@ void mt7615_mac_reset_work(struct work_struct *work)
 	int i;
 
 	dev = container_of(work, struct mt7615_dev, reset_work);
+	if (test_bit(MT76_REMOVED, &dev->mphy.state))
+		return;
+
 	ext_phy = dev->mt76.phys[MT_BAND1];
 	phy2 = ext_phy ? ext_phy->priv : NULL;
 

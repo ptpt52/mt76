@@ -87,7 +87,6 @@ struct mt7603_vif {
 	struct mt7603_sta sta; /* must be first */
 
 	u8 idx;
-	struct ieee80211_tx_queue_params tx_params[IEEE80211_NUM_ACS];
 };
 
 enum mt7603_reset_cause {
@@ -122,6 +121,8 @@ struct mt7603_dev {
 	u8 rssi_offset[3];
 
 	u8 slottime;
+	u8 tx_params_valid;
+	struct ieee80211_tx_queue_params tx_params[IEEE80211_NUM_ACS];
 	s16 coverage_class;
 
 	s8 tx_power_limit;

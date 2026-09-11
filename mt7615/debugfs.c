@@ -360,13 +360,14 @@ mt7615_queues_acq(struct seq_file *s, void *data)
 
 	mt7615_mutex_acquire(dev);
 
-	for (qlen = 0, i = 0; i < 16; i++) {
+	for (i = 0; i < 16; i++) {
 		int j, wmm_idx = i % MT7615_MAX_WMM_SETS;
 		int acs = i / MT7615_MAX_WMM_SETS;
 
 		if (wmm_idx == 3 && is_mt7663(&dev->mt76))
 			continue;
 
+		qlen = 0;
 		val = mt76_rr(dev, MT_PLE_AC_QEMPTY(acs, wmm_idx));
 		ctrl = BIT(31) | BIT(15) | (acs << 8);
 

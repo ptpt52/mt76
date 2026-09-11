@@ -74,7 +74,13 @@ int mt76x02u_tx_prepare_skb(struct mt76_dev *mdev, void *data,
 	u32 flags;
 	int err;
 
-	mt76_insert_hdr_pad(tx_info->skb);
+	err = skb_cow_head(tx_info->skb, sizeof(*txwi) + 2 + sizeof(u32));
+	if (err)
+		return err;
+
+	err = mt76_insert_hdr_pad(tx_info->skb);
+	if (err)
+		return err;
 
 	txwi = (struct mt76x02_txwi *)(tx_info->skb->data - sizeof(*txwi));
 	mt76x02_mac_write_txwi(dev, txwi, tx_info->skb, wcid, sta, len);
