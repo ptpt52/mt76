@@ -86,12 +86,15 @@ EXPORT_SYMBOL_GPL(mt76_wed_init_rx_buf);
 int mt76_wed_offload_enable(struct mtk_wed_device *wed)
 {
 	struct mt76_dev *dev = mt76_wed_to_dev(wed);
+	int ret;
 
 	spin_lock_bh(&dev->token_lock);
 	dev->token_size = wed->wlan.token_start;
+	/* The caller may run in BH context. Retry after host tokens drain. */
+	ret = dev->wed_token_count ? -EBUSY : 0;
 	spin_unlock_bh(&dev->token_lock);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(mt76_wed_offload_enable);
 
