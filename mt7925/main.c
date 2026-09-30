@@ -590,25 +590,34 @@ void mt7925_roc_abort_sync(struct mt792x_dev *dev)
 }
 EXPORT_SYMBOL_GPL(mt7925_roc_abort_sync);
 
+static void mt7925_abort_mgd_roc(struct mt792x_vif *mvif)
+{
+	struct mt792x_phy *phy = mvif->phy;
+
+	lockdep_assert_held(&phy->dev->mt76.mutex);
+
+	if (phy->roc_mgd_tx && phy->roc_bss_idx == mvif->bss_conf.mt76.idx) {
+		phy->roc_mgd_tx = false;
+		mt7925_roc_abort_sync(phy->dev);
+	}
+}
+
 void mt7925_roc_work(struct work_struct *work)
 {
-	struct mt792x_phy *phy;
-	u8 token, bss_idx;
-
-	phy = (struct mt792x_phy *)container_of(work, struct mt792x_phy,
-						roc_work);
-
-	token = phy->roc_token_id;
-	bss_idx = phy->roc_bss_idx;
-
-	if (!test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state))
-		return;
-
-	/* Before the abort round trip, so that no mgmt_tx joins the dead ROC */
-	ieee80211_remain_on_channel_expired(phy->mt76->hw);
+	struct mt792x_phy *phy = container_of(work, struct mt792x_phy, roc_work);
 
 	mt792x_mutex_acquire(phy->dev);
-	mt7925_roc_abort_all(phy, token, bss_idx);
+
+	/* Queued expiry work can outlive the request that armed the timer. */
+	if (timer_pending(&phy->roc_timer) ||
+	    !test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state))
+		goto out;
+
+	if (phy->roc_notify)
+		ieee80211_remain_on_channel_expired(phy->mt76->hw);
+
+	mt7925_roc_abort_all(phy, phy->roc_token_id, phy->roc_bss_idx);
+out:
 	mt792x_mutex_release(phy->dev);
 }
 
@@ -668,6 +677,7 @@ static int mt7925_set_roc(struct mt792x_phy *phy,
 	phy->roc_bss_idx = mconf->mt76.idx;
 	phy->roc_grant = false;
 	phy->roc_notify = type == MT7925_ROC_REQ_ROC;
+	phy->roc_mgd_tx = false;
 
 	err = mt7925_mcu_set_roc(phy, mconf, chan, duration, type, token);
 	if (err < 0) {
@@ -693,13 +703,14 @@ static int mt7925_set_mlo_roc(struct mt792x_phy *phy,
 	int err;
 	u8 token;
 
-	if (WARN_ON_ONCE(test_and_set_bit(MT76_STATE_ROC, &phy->mt76->state)))
+	if (test_and_set_bit(MT76_STATE_ROC, &phy->mt76->state))
 		return -EBUSY;
 
 	token = ++phy->roc_token_id;
 	phy->roc_bss_idx = mconf->mt76.idx;
 	phy->roc_grant = false;
 	phy->roc_notify = false;
+	phy->roc_mgd_tx = false;
 
 	err = mt7925_mcu_set_mlo_roc(phy, mconf, sel_links, 5, token);
 	if (err < 0) {
@@ -1386,12 +1397,10 @@ mt7925_mac_set_links(struct mt76_dev *mdev, struct ieee80211_vif *vif)
 
 	if (band == NL80211_BAND_2GHZ ||
 	    (band == NL80211_BAND_5GHZ && secondary_band == NL80211_BAND_6GHZ)) {
-		mt7925_abort_roc(mvif->phy, &mvif->bss_conf);
-
 		mt792x_mutex_acquire(dev);
-
-		mt7925_set_mlo_roc(mvif->phy, &mvif->bss_conf, sel_links);
-
+		mt7925_abort_mgd_roc(mvif);
+		if (!mt7925_set_mlo_roc(mvif->phy, &mvif->bss_conf, sel_links))
+			mvif->phy->roc_mgd_tx = true;
 		mt792x_mutex_release(dev);
 	}
 
@@ -1422,6 +1431,7 @@ static void mt7925_mac_link_sta_assoc(struct mt76_dev *mdev,
 		struct mt792x_bss_conf *mconf;
 
 		mconf = mt792x_link_conf_to_mconf(link_conf);
+		mt7925_abort_mgd_roc(mconf->vif);
 		mt7925_mcu_add_bss_info(&dev->phy, mconf->mt76.ctx,
 					link_conf, link_sta, true);
 	}
@@ -1443,13 +1453,6 @@ int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 {
 	struct mt792x_dev *dev = container_of(mdev, struct mt792x_dev, mt76);
 	struct ieee80211_link_sta *link_sta = &sta->deflink;
-	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
-
-	if (mvif->roc_join_held && !sta->tdls &&
-	    (ev == MT76_STA_EVENT_AUTHORIZE || ev == MT76_STA_EVENT_DISASSOC)) {
-		mvif->roc_join_held = false;
-		mt7925_abort_roc(mvif->phy, &mvif->bss_conf);
-	}
 
 	switch (ev) {
 	case MT76_STA_EVENT_ASSOC:
@@ -1459,7 +1462,7 @@ int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 
 			link_sta = mt792x_sta_to_link_sta(vif, sta,
 							  msta->deflink_id);
-			if (vif->type == NL80211_IFTYPE_STATION)
+			if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls)
 				mt7925_mac_set_links(mdev, vif);
 		}
 
@@ -1723,7 +1726,6 @@ void mt7925_mac_sta_remove(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 
 	if (vif->type == NL80211_IFTYPE_STATION) {
 		mvif->wep_sta = NULL;
-		mvif->roc_join_held = false;
 		ewma_rssi_init(&mvif->bss_conf.rssi);
 	}
 
@@ -2418,9 +2420,10 @@ static void mt7925_mgd_prepare_tx(struct ieee80211_hw *hw,
 		duration = MT7925_P2P_GC_JOIN_CH_REQ_INTERVAL_MS;
 
 	mt792x_mutex_acquire(dev);
-	mt7925_set_roc(mvif->phy, &mvif->bss_conf,
-		       mvif->bss_conf.mt76.ctx->def.chan, duration,
-		       MT7925_ROC_REQ_JOIN);
+	if (!mt7925_set_roc(mvif->phy, &mvif->bss_conf,
+			    mvif->bss_conf.mt76.ctx->def.chan, duration,
+			    MT7925_ROC_REQ_JOIN))
+		mvif->phy->roc_mgd_tx = true;
 	mt792x_mutex_release(dev);
 }
 
@@ -2433,20 +2436,9 @@ static void mt7925_mgd_complete_tx(struct ieee80211_hw *hw,
 	if (info->was_assoc)
 		return;
 
-	/* Keep the join ROC until the station is authorized, so that it
-	 * covers the 4-way handshake. mt7925_mac_sta_event() releases it.
-	 * On MLD, the active ROC is the MLO ROC, which must be released
-	 * before the link activation work sets its own.
-	 */
-	if (vif->type == NL80211_IFTYPE_STATION && !ieee80211_vif_is_mld(vif) &&
-	    info->success &&
-	    (info->subtype == IEEE80211_STYPE_ASSOC_REQ ||
-	     info->subtype == IEEE80211_STYPE_REASSOC_REQ)) {
-		mvif->roc_join_held = true;
-		return;
-	}
-
-	mt7925_abort_roc(mvif->phy, &mvif->bss_conf);
+	mt792x_mutex_acquire(mvif->phy->dev);
+	mt7925_abort_mgd_roc(mvif);
+	mt792x_mutex_release(mvif->phy->dev);
 }
 
 static void mt7925_vif_cfg_changed(struct ieee80211_hw *hw,
