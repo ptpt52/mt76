@@ -330,6 +330,8 @@ struct mt7996_sta {
 	u8 conn_state;
 	u16 peer_mld_links;
 	u16 fw_mld_idx;
+	bool npu_offload; /* Peer is eligible independently of key updates. */
+	bool npu_key_blocked;
 
 	unsigned long wcid_flags;
 	u16 airtime_weight;
@@ -366,6 +368,8 @@ struct mt7996_vif {
 
 	u8 mld_group_idx;
 	u8 mld_remap_idx;
+	/* Unsupported default data keys require software TX until VIF recreation. */
+	bool npu_key_blocked;
 };
 
 /* crash-dump */
@@ -511,7 +515,7 @@ struct mt7996_dev {
 	struct work_struct init_work;
 	struct work_struct rc_work;
 	struct work_struct dump_work;
-	struct work_struct reset_work;
+	struct delayed_work reset_work;
 	wait_queue_head_t reset_wait;
 	struct {
 		u32 state;

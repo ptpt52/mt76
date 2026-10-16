@@ -1778,7 +1778,7 @@ int mt7996_register_device(struct mt7996_dev *dev)
 	INIT_LIST_HEAD(&dev->twt_list);
 
 	init_waitqueue_head(&dev->reset_wait);
-	INIT_WORK(&dev->reset_work, mt7996_mac_reset_work);
+	INIT_DELAYED_WORK(&dev->reset_work, mt7996_mac_reset_work);
 	INIT_WORK(&dev->dump_work, mt7996_mac_dump_work);
 	mutex_init(&dev->dump_mutex);
 
@@ -1836,7 +1836,7 @@ void mt7996_unregister_device(struct mt7996_dev *dev)
 
 	cancel_work_sync(&dev->dump_work);
 	cancel_work_sync(&dev->wed_rro.work);
-	cancel_work_sync(&dev->reset_work);
+	disable_delayed_work_sync(&dev->reset_work);
 	cancel_work_sync(&dev->rc_work);
 	mt7996_unregister_phy(mt7996_phy3(dev));
 	mt7996_unregister_phy(mt7996_phy2(dev));

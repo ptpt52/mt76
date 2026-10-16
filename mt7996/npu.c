@@ -550,6 +550,10 @@ int __mt7996_npu_hw_init(struct mt7996_dev *dev)
 	if (err)
 		return err;
 
+	err = mt76_npu_offload_enable(&dev->mt76, true);
+	if (err)
+		return err;
+
 	for (i = MT_RXQ_NPU0; i <= MT_RXQ_NPU1; i++)
 		airoha_npu_wlan_enable_irq(npu, i - MT_RXQ_NPU0);
 
@@ -597,6 +601,8 @@ int mt7996_npu_hw_stop(struct mt7996_dev *dev)
 	int i, err = 0;
 	u32 info;
 
+	/* Invalidate NPU BINDs before stopping queues or reusing tokens. */
+	mt76_npu_offload_enable(&dev->mt76, false);
 	mutex_lock(&dev->mt76.mutex);
 
 	npu = rcu_dereference_protected(dev->mt76.mmio.npu, &dev->mt76.mutex);

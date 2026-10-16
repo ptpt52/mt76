@@ -866,7 +866,15 @@ static int mt7996_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	struct mt7996_dev *dev = mt7996_hw_dev(hw);
 	unsigned int link_id;
 	unsigned long links;
+	struct mt7996_sta *msta = sta ? (void *)sta->drv_priv : NULL;
 	int err = 0;
+
+	if (msta && (key->flags & IEEE80211_KEY_FLAG_PAIRWISE)) {
+		WRITE_ONCE(msta->npu_key_blocked, true);
+		err = mt76_npu_offload_flush(&dev->mt76);
+		if (err)
+			return err;
+	}
 
 	/* The hardware does not support per-STA RX GTK, fallback
 	 * to software mode for these.
@@ -896,10 +904,19 @@ static int mt7996_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	case WLAN_CIPHER_SUITE_BIP_GMAC_256:
 		if (key->keyidx == 6 || key->keyidx == 7)
 			break;
-		fallthrough;
+		return -EOPNOTSUPP;
 	case WLAN_CIPHER_SUITE_WEP40:
 	case WLAN_CIPHER_SUITE_WEP104:
 	default:
+		if (!msta && cmd == SET_KEY) {
+			struct mt7996_vif *mvif = (void *)vif->drv_priv;
+
+			/* Default data keys can also encrypt unicast traffic. */
+			WRITE_ONCE(mvif->npu_key_blocked, true);
+			err = mt76_npu_offload_flush(&dev->mt76);
+			if (err)
+				return err;
+		}
 		return -EOPNOTSUPP;
 	}
 
@@ -928,6 +945,9 @@ static int mt7996_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		if (err)
 			break;
 	}
+	if (!err && cmd == SET_KEY && msta &&
+	    (key->flags & IEEE80211_KEY_FLAG_PAIRWISE))
+		WRITE_ONCE(msta->npu_key_blocked, false);
 	mutex_unlock(&dev->mt76.mutex);
 
 	return err;
@@ -1477,6 +1497,8 @@ void mt7996_mac_sta_remove_link(struct mt7996_dev *dev,
 		list_del_init(&msta_link->rc_list);
 	spin_unlock_bh(&dev->mt76.sta_poll_lock);
 
+	WRITE_ONCE(msta->npu_offload, false);
+	mt76_npu_offload_flush(&dev->mt76);
 	mt76_wcid_cleanup(&dev->mt76, &msta_link->wcid);
 
 	if (msta_link->wcid.link_valid) {
@@ -2128,6 +2150,8 @@ mt7996_sta_pre_rcu_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	unsigned int link_id;
 
 	mutex_lock(&dev->mt76.mutex);
+	WRITE_ONCE(msta->npu_offload, false);
+	mt76_npu_offload_flush(&dev->mt76);
 	spin_lock_bh(&dev->mt76.status_lock);
 
 	for (link_id = 0; link_id < ARRAY_SIZE(msta->link); link_id++) {
@@ -2149,7 +2173,14 @@ mt7996_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		 enum ieee80211_sta_state new_state)
 {
 	struct mt7996_dev *dev = mt7996_hw_dev(hw);
+	struct mt7996_sta *msta = (struct mt7996_sta *)sta->drv_priv;
 	enum mt76_sta_event ev;
+	int err;
+
+	if (new_state < old_state) {
+		WRITE_ONCE(msta->npu_offload, false);
+		mt76_npu_offload_flush(&dev->mt76);
+	}
 
 	if (old_state == IEEE80211_STA_NOTEXIST &&
 	    new_state == IEEE80211_STA_NONE)
@@ -2184,7 +2215,12 @@ mt7996_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		return 0;
 	}
 
-	return mt7996_mac_sta_event(dev, vif, sta, ev);
+	err = mt7996_mac_sta_event(dev, vif, sta, ev);
+	if (!err && ev == MT76_STA_EVENT_AUTHORIZE &&
+	    vif->type == NL80211_IFTYPE_AP && !ieee80211_vif_is_mld(vif) &&
+	    !sta->valid_links)
+		WRITE_ONCE(msta->npu_offload, true);
+	return err;
 }
 
 static void mt7996_tx(struct ieee80211_hw *hw,
@@ -2804,6 +2840,8 @@ static void mt7996_sta_set_4addr(struct ieee80211_hw *hw,
 
 	mutex_lock(&dev->mt76.mutex);
 
+	WRITE_ONCE(msta->npu_offload, false);
+	mt76_npu_offload_flush(&dev->mt76);
 	assign_bit(MT_WCID_FLAG_4ADDR, &msta->wcid_flags, enabled);
 	for_each_sta_active_link(vif, sta, link_sta, link_id) {
 		struct mt7996_sta_link *msta_link;
@@ -3391,6 +3429,20 @@ mt7996_net_fill_forward_path(struct ieee80211_hw *hw,
 	if (!mtk_wed_device_active(wed) &&
 	    !mt76_npu_device_active(&dev->mt76))
 		return -ENODEV;
+	/* The new natflow AP path needs peer/key lifetime validation. Keep
+	 * the existing forward-path behavior for other interface modes.
+	 */
+	if (mt76_npu_device_active(&dev->mt76) &&
+	    vif->type == NL80211_IFTYPE_AP &&
+	    (ieee80211_vif_is_mld(vif) ||
+	     READ_ONCE(((struct mt7996_vif *)vif->drv_priv)->npu_key_blocked) ||
+	     sta->valid_links || !READ_ONCE(msta->npu_offload) ||
+	     READ_ONCE(msta->npu_key_blocked) ||
+	     test_bit(MT76_RESET, &dev->mphy.state) ||
+	     test_bit(MT76_RESTART, &dev->mphy.state) ||
+	     test_bit(MT76_MCU_RESET, &dev->mphy.state) ||
+	     test_bit(MT_WCID_FLAG_4ADDR, &msta_link->wcid.flags)))
+		return -EOPNOTSUPP;
 
 	path->type = DEV_PATH_MTK_WDMA;
 	path->dev = ctx->dev;

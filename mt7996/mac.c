@@ -714,7 +714,9 @@ mt7996_mac_fill_rx(struct mt7996_dev *dev, enum mt76_rxq_id q,
 		if (mt7996_wed_check_ppe(dev, &dev->mt76.q_rx[q], msta, skb,
 					  *info))
 			return -EINVAL;
-		mt76_npu_check_ppe(&dev->mt76, skb, *info);
+		/* Keepalive copies must not re-enter the ordinary RX/NAT path. */
+		if (mt76_npu_check_ppe(&dev->mt76, skb, *info))
+			return -EINVAL;
 	}
 
 	if (rxv && !(status->flag & RX_FLAG_8023)) {
@@ -2575,14 +2577,35 @@ mt7996_mac_reset_vif_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
 	rcu_read_unlock();
 }
 
-static void
+static bool mt7996_mac_stop_npu(struct mt7996_dev *dev)
+{
+	int err = mt7996_npu_hw_stop(dev);
+
+	if (!err)
+		return true;
+
+	/* The NPU may still own descriptors. Keep the queues stopped and
+	 * retry full recovery before reclaiming DMA buffers or tokens.
+	 */
+	dev_err_ratelimited(dev->mt76.dev, "NPU stop failed (%d), retrying full reset\n",
+			    err);
+	ieee80211_stop_queues(mt76_hw(dev));
+	set_bit(MT76_MCU_RESET, &dev->mphy.state);
+	wake_up(&dev->mt76.mcu.wait);
+	dev->recovery.restart = true;
+	queue_delayed_work(dev->mt76.wq, &dev->reset_work, HZ);
+
+	return false;
+}
+
+static bool
 mt7996_mac_full_reset(struct mt7996_dev *dev)
 {
 	struct ieee80211_hw *hw = mt76_hw(dev);
 	struct mt7996_twt_flow *flow, *tmp;
 	struct mt7996_phy *phy;
 	LIST_HEAD(list);
-	int i;
+	int i, err;
 
 	dev->recovery.hw_full_reset = true;
 
@@ -2596,6 +2619,12 @@ mt7996_mac_full_reset(struct mt7996_dev *dev)
 		cancel_delayed_work_sync(&phy->mt76->mac_work);
 
 	mt76_abort_scan(&dev->mt76);
+
+	/* Full reset bypasses the L1 SER stop path. Withdraw BINDs before
+	 * DMA/token reset and keep NPU queues stopped while rebuilding peers.
+	 */
+	if (!mt7996_mac_stop_npu(dev))
+		return false;
 
 	mutex_lock(&dev->mt76.mutex);
 	for (i = 0; i < 10; i++) {
@@ -2653,6 +2682,12 @@ mt7996_mac_full_reset(struct mt7996_dev *dev)
 		kfree(e);
 	}
 
+	if (i < 10) {
+		err = __mt7996_npu_hw_init(dev);
+		if (err)
+			dev_err(dev->mt76.dev, "NPU full reset init failed: %d\n", err);
+	}
+
 	mt7996_global_wcid_init(dev);
 	dev->recovery.hw_full_reset = false;
 
@@ -2661,6 +2696,8 @@ mt7996_mac_full_reset(struct mt7996_dev *dev)
 	ieee80211_wake_queues(mt76_hw(dev));
 
 	ieee80211_restart_hw(mt76_hw(dev));
+
+	return true;
 }
 
 /* MT76_MCU_RESET keeps every command from the firmware until the reload */
@@ -2671,7 +2708,7 @@ void mt7996_mac_full_reset_queue(struct mt7996_dev *dev)
 	set_bit(MT76_MCU_RESET, &dev->mphy.state);
 	dev->recovery.restart = true;
 	wake_up(&dev->mt76.mcu.wait);
-	queue_work(dev->mt76.wq, &dev->reset_work);
+	queue_delayed_work(dev->mt76.wq, &dev->reset_work, 0);
 	wake_up(&dev->reset_wait);
 }
 
@@ -2683,21 +2720,23 @@ void mt7996_mac_reset_work(struct work_struct *work)
 	struct mt7996_phy *phy;
 	int i;
 
-	dev = container_of(work, struct mt7996_dev, reset_work);
+	dev = container_of(to_delayed_work(work), struct mt7996_dev, reset_work);
 	hw = mt76_hw(dev);
 
 	/* chip full reset */
 	if (dev->recovery.restart) {
-		/* disable WA/WM WDT */
-		mt76_clear(dev, MT_WFDMA0_MCU_HOST_INT_ENA,
-			   MT_MCU_CMD_WDT_MASK);
+		if (!dev->recovery.hw_full_reset) {
+			/* Count each recovery once, including NPU stop retries. */
+			mt76_clear(dev, MT_WFDMA0_MCU_HOST_INT_ENA,
+				   MT_MCU_CMD_WDT_MASK);
+			if (READ_ONCE(dev->recovery.state) & MT_MCU_CMD_WA_WDT)
+				dev->recovery.wa_reset_count++;
+			else
+				dev->recovery.wm_reset_count++;
+		}
 
-		if (READ_ONCE(dev->recovery.state) & MT_MCU_CMD_WA_WDT)
-			dev->recovery.wa_reset_count++;
-		else
-			dev->recovery.wm_reset_count++;
-
-		mt7996_mac_full_reset(dev);
+		if (!mt7996_mac_full_reset(dev))
+			return;
 
 		/* enable mcu irq */
 		mt7996_irq_enable(dev, MT_INT_MCU_CMD);
@@ -2718,7 +2757,9 @@ void mt7996_mac_reset_work(struct work_struct *work)
 		 wiphy_name(hw->wiphy));
 
 	mt7996_wed_stop(dev);
-	mt7996_npu_hw_stop(dev);
+	if (!mt7996_mac_stop_npu(dev))
+		return;
+
 	ieee80211_stop_queues(mt76_hw(dev));
 
 	set_bit(MT76_RESET, &dev->mphy.state);
@@ -2906,7 +2947,7 @@ void mt7996_mac_dump_work(struct work_struct *work)
 skip_memdump:
 	mt7996_coredump_submit(dev);
 skip_coredump:
-	queue_work(dev->mt76.wq, &dev->reset_work);
+	queue_delayed_work(dev->mt76.wq, &dev->reset_work, 0);
 }
 
 void mt7996_reset(struct mt7996_dev *dev)
@@ -2934,7 +2975,7 @@ void mt7996_reset(struct mt7996_dev *dev)
 		wake_up(&dev->mt76.mcu.wait);
 	}
 
-	queue_work(dev->mt76.wq, &dev->reset_work);
+	queue_delayed_work(dev->mt76.wq, &dev->reset_work, 0);
 	wake_up(&dev->reset_wait);
 }
 

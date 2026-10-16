@@ -251,6 +251,20 @@ int main(void)
 	assert(!mt7996_set_key(&hw, DISABLE_KEY, &vif, &sta, &igtk));
 	assert(msta->deflink.wcid.rx_check_pn);
 
+	/* mac80211 disables the old PTK before installing its replacement. */
+	msta->npu_offload = true;
+	assert(!mt7996_set_key(&hw, DISABLE_KEY, &vif, &sta, &gtk));
+	assert(msta->npu_key_blocked);
+	send_error = -EIO;
+	assert(mt7996_set_key(&hw, SET_KEY, &vif, &sta, &gtk) == -EIO);
+	assert(msta->npu_key_blocked);
+	send_error = 0;
+	assert(!mt7996_set_key(&hw, SET_KEY, &vif, &sta, &gtk));
+	assert(msta->npu_offload && !msta->npu_key_blocked);
+	msta->npu_offload = false;
+	assert(!mt7996_set_key(&hw, SET_KEY, &vif, &sta, &gtk));
+	assert(!msta->npu_offload && !msta->npu_key_blocked);
+
 	/* Exercise the defensive TLV check independently of the public gate. */
 	before = sends;
 	assert(mt7996_mcu_add_key(&dev.mt76, &dev.link[0], NULL, &igtk,
