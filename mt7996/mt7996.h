@@ -324,6 +324,8 @@ struct mt7996_sta {
 	u8 deflink_id;
 	u8 seclink_id;
 	u8 conn_state;
+	bool npu_offload;
+	bool npu_key_blocked;
 
 	unsigned long wcid_flags;
 	u16 airtime_weight;
@@ -358,6 +360,8 @@ struct mt7996_vif {
 
 	u8 mld_group_idx;
 	u8 mld_remap_idx;
+	/* Unsupported default data keys require software TX until VIF recreation. */
+	bool npu_key_blocked;
 };
 
 /* crash-dump */

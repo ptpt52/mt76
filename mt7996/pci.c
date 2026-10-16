@@ -146,8 +146,15 @@ static int mt7996_pci_probe(struct pci_dev *pdev,
 	hif2 = mt7996_pci_init_hif2(pdev);
 	dev->hif2 = hif2;
 
-	mt76_npu_init(mdev, pci_resource_start(pdev, 0),
-		      pci_domain_nr(pdev->bus) ? 3 : 2);
+	/* Only these chips have a matching Airoha NPU firmware interface. */
+	if (is_mt7992(mdev) || is_mt7996(mdev)) {
+		ret = mt76_npu_init(mdev, pci_resource_start(pdev, 0),
+				   pci_domain_nr(pdev->bus) ? 3 : 2);
+		if (ret == -EPROBE_DEFER) {
+			mt7996_put_hif2(hif2);
+			goto free_device;
+		}
+	}
 
 	ret = mt7996_mmio_wed_init(dev, pdev, false, &irq);
 	if (ret < 0)

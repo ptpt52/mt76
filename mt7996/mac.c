@@ -699,7 +699,9 @@ mt7996_mac_fill_rx(struct mt7996_dev *dev, enum mt76_rxq_id q,
 		if (mt7996_wed_check_ppe(dev, &dev->mt76.q_rx[q], msta, skb,
 					  *info))
 			return -EINVAL;
-		mt76_npu_check_ppe(&dev->mt76, skb, *info);
+		/* Keepalive copies must not re-enter the ordinary RX/NAT path. */
+		if (mt76_npu_check_ppe(&dev->mt76, skb, *info))
+			return -EINVAL;
 	}
 
 	if (rxv && !(status->flag & RX_FLAG_8023)) {
@@ -2476,7 +2478,7 @@ mt7996_mac_full_reset(struct mt7996_dev *dev)
 	struct ieee80211_hw *hw = mt76_hw(dev);
 	struct mt7996_phy *phy;
 	LIST_HEAD(list);
-	int i;
+	int i, err;
 
 	dev->recovery.hw_full_reset = true;
 
@@ -2491,6 +2493,10 @@ mt7996_mac_full_reset(struct mt7996_dev *dev)
 
 	mt76_abort_scan(&dev->mt76);
 
+	/* Full reset bypasses the L1 SER stop path. Withdraw BINDs before
+	 * DMA/token reset and keep NPU queues stopped while rebuilding peers.
+	 */
+	mt7996_npu_hw_stop(dev);
 	mutex_lock(&dev->mt76.mutex);
 	for (i = 0; i < 10; i++) {
 		if (!mt7996_mac_restart(dev))
@@ -2525,6 +2531,12 @@ mt7996_mac_full_reset(struct mt7996_dev *dev)
 				     list);
 		list_del_init(&e->list);
 		kfree(e);
+	}
+
+	if (i < 10) {
+		err = __mt7996_npu_hw_init(dev);
+		if (err)
+			dev_err(dev->mt76.dev, "NPU full reset init failed: %d\n", err);
 	}
 
 	i = mt76_wcid_alloc(dev->mt76.wcid_mask, MT7996_WTBL_STA);

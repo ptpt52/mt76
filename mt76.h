@@ -1685,7 +1685,7 @@ int mt76_testmode_set_state(struct mt76_phy *phy, enum mt76_testmode_state state
 int mt76_testmode_alloc_skb(struct mt76_phy *phy, u32 len);
 
 #ifdef CONFIG_MT76_NPU
-void mt76_npu_check_ppe(struct mt76_dev *dev, struct sk_buff *skb,
+bool mt76_npu_check_ppe(struct mt76_dev *dev, struct sk_buff *skb,
 			u32 info);
 int mt76_npu_dma_add_buf(struct mt76_phy *phy, struct mt76_queue *q,
 			 struct sk_buff *skb, struct mt76_queue_buf *buf,
@@ -1695,6 +1695,8 @@ int mt76_npu_fill_rx_queue(struct mt76_dev *dev, struct mt76_queue *q);
 void mt76_npu_queue_cleanup(struct mt76_dev *dev, struct mt76_queue *q);
 void mt76_npu_disable_irqs(struct mt76_dev *dev);
 int mt76_npu_init(struct mt76_dev *dev, phys_addr_t phy_addr, int type);
+int mt76_npu_offload_enable(struct mt76_dev *dev, bool enable);
+int mt76_npu_offload_flush(struct mt76_dev *dev);
 void mt76_npu_deinit(struct mt76_dev *dev);
 void mt76_npu_queue_setup(struct mt76_dev *dev, struct mt76_queue *q);
 void mt76_npu_txdesc_cleanup(struct mt76_queue *q, int index);
@@ -1705,9 +1707,20 @@ int mt76_npu_send_txrx_addr(struct mt76_dev *dev, int ifindex,
 			    u32 direction, u32 i_count_addr,
 			    u32 o_status_addr, u32 o_count_addr);
 #else
-static inline void mt76_npu_check_ppe(struct mt76_dev *dev,
+static inline bool mt76_npu_check_ppe(struct mt76_dev *dev,
 				      struct sk_buff *skb, u32 info)
 {
+	return false;
+}
+
+static inline int mt76_npu_offload_enable(struct mt76_dev *dev, bool enable)
+{
+	return 0;
+}
+
+static inline int mt76_npu_offload_flush(struct mt76_dev *dev)
+{
+	return 0;
 }
 
 static inline int mt76_npu_dma_add_buf(struct mt76_phy *phy,
