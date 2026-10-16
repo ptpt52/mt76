@@ -232,7 +232,7 @@ static void mt7915_mac_sta_poll(struct mt7915_dev *dev)
 	rcu_read_unlock();
 }
 
-static void
+static bool
 mt7915_wed_check_ppe(struct mt7915_dev *dev, struct mt76_queue *q,
 		     struct mt7915_sta *msta, struct sk_buff *skb,
 		     u32 info)
@@ -241,23 +241,30 @@ mt7915_wed_check_ppe(struct mt7915_dev *dev, struct mt76_queue *q,
 	struct wireless_dev *wdev;
 
 	if (!msta || !msta->vif)
-		return;
+		return false;
 
 	if (!mt76_queue_is_wed_rx(q))
-		return;
+		return false;
 
 	if (!(info & MT_DMA_INFO_PPE_VLD))
-		return;
+		return false;
 
 	vif = container_of((void *)msta->vif, struct ieee80211_vif,
 			   drv_priv);
 	wdev = ieee80211_vif_to_wdev(vif);
 	skb->dev = wdev->netdev;
 
+#ifdef MTK_WED_PPE_CHECK_RETURNS_BOOL
+	return mtk_wed_device_ppe_check(&dev->mt76.mmio.wed, skb,
+				 FIELD_GET(MT_DMA_PPE_CPU_REASON, info),
+				 FIELD_GET(MT_DMA_PPE_ENTRY, info));
+#else
 	mtk_wed_device_ppe_check(&dev->mt76.mmio.wed, skb,
 				 FIELD_GET(MT_DMA_PPE_CPU_REASON, info),
 				 FIELD_GET(MT_DMA_PPE_ENTRY, info),
 				 msta->wcid.idx);
+	return false;
+#endif
 }
 
 static int
@@ -526,8 +533,9 @@ mt7915_mac_fill_rx(struct mt7915_dev *dev, struct sk_buff *skb,
 		}
 	} else {
 		status->flag |= RX_FLAG_8023;
-		mt7915_wed_check_ppe(dev, &dev->mt76.q_rx[q], msta, skb,
-				     *info);
+		if (mt7915_wed_check_ppe(dev, &dev->mt76.q_rx[q], msta, skb,
+					  *info))
+			return -EINVAL;
 	}
 
 	if (rxv && mode >= MT_PHY_TYPE_HE_SU && !(status->flag & RX_FLAG_8023))
