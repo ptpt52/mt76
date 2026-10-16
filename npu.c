@@ -113,14 +113,15 @@ static struct sk_buff *mt76_npu_dequeue(struct mt76_dev *dev,
 	return skb;
 }
 
-void mt76_npu_check_ppe(struct mt76_dev *dev, struct sk_buff *skb,
+bool mt76_npu_check_ppe(struct mt76_dev *dev, struct sk_buff *skb,
 			u32 info)
 {
 	struct airoha_ppe_dev *ppe_dev;
 	u16 reason, hash;
+	bool consumed = false;
 
 	if (!mt76_npu_device_active(dev))
-		return;
+		return false;
 
 	rcu_read_lock();
 
@@ -132,14 +133,67 @@ void mt76_npu_check_ppe(struct mt76_dev *dev, struct sk_buff *skb,
 	skb_set_hash(skb, hash, PKT_HASH_TYPE_L4);
 
 	reason = FIELD_GET(NPU_RX_DMA_CRSN_MASK, info);
-	if (reason == PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED) {
-		skb_set_mac_header(skb, 0);
+	skb_set_mac_header(skb, 0);
+#ifdef AIROHA_PPE_NATFLOW_WLAN
+	consumed = airoha_ppe_dev_wlan_rx(ppe_dev, skb, hash, reason);
+	if (consumed)
+		goto out;
+#endif
+	if (reason == PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
 		airoha_ppe_dev_check_skb(ppe_dev, skb, hash, true);
-	}
 out:
 	rcu_read_unlock();
+	return consumed;
 }
 EXPORT_SYMBOL_GPL(mt76_npu_check_ppe);
+
+#ifdef AIROHA_PPE_NATFLOW_WLAN
+static bool mt76_npu_owns_netdev(void *owner, struct net_device *netdev)
+{
+	struct mt76_dev *dev = owner;
+	struct wireless_dev *wdev = netdev->ieee80211_ptr;
+
+	/* Resolve using the same cfg80211 layout as the wireless driver,
+	 * including when mt76 is built against mac80211-backports.
+	 */
+	return wdev && wdev->wiphy == dev->hw->wiphy &&
+	       wdev->iftype == NL80211_IFTYPE_AP;
+}
+#endif
+
+int mt76_npu_offload_enable(struct mt76_dev *dev, bool enable)
+{
+	int err = 0;
+
+#ifdef AIROHA_PPE_NATFLOW_WLAN
+	struct airoha_ppe_dev *ppe;
+
+	rcu_read_lock();
+	ppe = rcu_dereference(dev->mmio.ppe_dev);
+	if (ppe)
+		err = airoha_ppe_dev_wlan_setup(ppe, dev, mt76_npu_owns_netdev, enable);
+	rcu_read_unlock();
+#endif
+	return err == -EOPNOTSUPP ? 0 : err;
+}
+EXPORT_SYMBOL_GPL(mt76_npu_offload_enable);
+
+int mt76_npu_offload_flush(struct mt76_dev *dev)
+{
+	int err = 0;
+
+#ifdef AIROHA_PPE_NATFLOW_WLAN
+	struct airoha_ppe_dev *ppe;
+
+	rcu_read_lock();
+	ppe = rcu_dereference(dev->mmio.ppe_dev);
+	if (ppe)
+		err = airoha_ppe_dev_wlan_flush(ppe, dev);
+	rcu_read_unlock();
+#endif
+	return err == -EOPNOTSUPP ? 0 : err;
+}
+EXPORT_SYMBOL_GPL(mt76_npu_offload_flush);
 
 static int mt76_npu_rx_poll(struct napi_struct *napi, int budget)
 {
@@ -502,6 +556,7 @@ void mt76_npu_deinit(struct mt76_dev *dev)
 	struct airoha_ppe_dev *ppe_dev;
 	struct airoha_npu *npu;
 
+	mt76_npu_offload_enable(dev, false);
 	mutex_lock(&dev->mutex);
 
 	npu = rcu_replace_pointer(dev->mmio.npu, NULL,
