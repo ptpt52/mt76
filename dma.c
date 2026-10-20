@@ -1162,6 +1162,12 @@ mt76_dma_rx_queue_init(struct mt76_dev *dev, enum mt76_rxq_id qid,
 		       int (*poll)(struct napi_struct *napi, int budget))
 {
 	netif_napi_add(dev->napi_dev, &dev->napi[qid], poll);
+	/* Prioritize RX under CPU load, but keep fair scheduling: a full RX
+	 * ring can keep NAPI polling indefinitely and starve equal-priority
+	 * FIFO workers on the same CPU.
+	 */
+	if (dev->napi[qid].thread)
+		sched_set_normal(dev->napi[qid].thread, -20);
 	mt76_dma_rx_fill_buf(dev, &dev->q_rx[qid], false);
 	napi_enable(&dev->napi[qid]);
 }
