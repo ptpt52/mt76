@@ -412,7 +412,13 @@ mt7996_wed_check_ppe(struct mt7996_dev *dev, struct mt76_queue *q,
 	wdev = ieee80211_vif_to_wdev(vif);
 	skb->dev = wdev->netdev;
 
-#ifdef MTK_WED_PPE_CHECK_RETURNS_BOOL
+#if defined(MTK_WED_PPE_CHECK_RETURNS_BOOL) && \
+    defined(MTK_WED_PPE_CHECK_HAS_WCID)
+	return mtk_wed_device_ppe_check(&dev->mt76.mmio.wed, skb,
+				 FIELD_GET(MT_DMA_PPE_CPU_REASON, info),
+				 FIELD_GET(MT_DMA_PPE_ENTRY, info),
+				 msta_link->wcid.idx);
+#elif defined(MTK_WED_PPE_CHECK_RETURNS_BOOL)
 	return mtk_wed_device_ppe_check(&dev->mt76.mmio.wed, skb,
 				 FIELD_GET(MT_DMA_PPE_CPU_REASON, info),
 				 FIELD_GET(MT_DMA_PPE_ENTRY, info));
