@@ -40,6 +40,11 @@ int mt76_npu_fill_rx_queue(struct mt76_dev *dev, struct mt76_queue *q)
 		nframes++;
 	}
 
+	/* Hand the slots back to the NPU only once they have a new buffer,
+	 * up to the one kept free in front of the tail.
+	 */
+	Q_WRITE(q, dma_idx, (q->head + 1) % q->ndesc);
+
 	return nframes;
 }
 
@@ -127,8 +132,6 @@ static int mt76_npu_rx_process_entry(struct napi_struct *napi)
 	mt76_rx_poll_complete(dev, qid, napi);
 	q->rx_head = NULL;
 	q->pending = 0;
-
-	Q_WRITE(q, dma_idx, q->tail);
 
 	return 0;
 }
