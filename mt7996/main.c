@@ -3317,6 +3317,14 @@ mt7996_net_fill_forward_path(struct ieee80211_hw *hw,
 	if (!mtk_wed_device_active(wed) &&
 	    !mt76_npu_device_active(&dev->mt76))
 		return -ENODEV;
+#ifdef NET_DEVICE_PATH_MTK_WDMA_RX
+	if (ctx->mtk_wdma_rx) {
+		/* All RRO receive queues use the main WED, including band 2. */
+		wed = &dev->mt76.mmio.wed;
+		if (!mtk_wed_device_active(wed) || !mtk_wed_get_rx_capa(wed))
+			return -EOPNOTSUPP;
+	}
+#endif
 	/* The new natflow AP path needs peer/key lifetime validation. Keep
 	 * the existing forward-path behavior for other interface modes.
 	 */
